@@ -800,6 +800,9 @@ def sesion_accion(estado, accion, d=None):
         texto = str(d.get("texto") or "").strip()[:120]
         for it in ints.values():
             it.sesion.marcar(texto or f"marca {len(it.sesion.marcas) + 1}")
+        out = estado.get("out")
+        if out is not None:   # se reenvía para que los visores la dibujen
+            out.send("/eeg/marca", [texto or "marca"])
         log("Marca:", texto or "(sin texto)")
     elif accion == "terminar":
         exportar_sesiones(estado, reiniciar=True)
@@ -949,7 +952,7 @@ async def principal(args):
             await modo_reproducir(args, out)
             return
         cascos = {}
-        estado = {"status": 0, "mensaje": "", "args": args,
+        estado = {"status": 0, "mensaje": "", "args": args, "out": out,
                   "pasos": {"credenciales": False, "cortex": False, "esperando_aprobacion": False, "autorizado": False,
                             "casco": "", "casco_estado": "", "flujos": []}}
         if args.monitor:

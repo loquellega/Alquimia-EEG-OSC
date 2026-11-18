@@ -148,6 +148,20 @@ Parámetros: puerto, casco, velocidad, ganancia, rótulos, resolución interna y
 
 ![Visor de TouchDesigner](docs/capturas/08-visor-touchdesigner.png)
 
+## Constelación para TouchDesigner
+
+En `touchdesigner/eeg_constelacion_td.py` está **eeg_constelacion**, un visualizador que cuenta la sesión como una constelación:
+
+- **cinco nubes de líneas**, una por estado (calma, imaginación, atención, activación, neutral), que respiran con su índice; la del estado actual brilla más;
+- **hilos blancos** que se acumulan con cada transición: al final, el tejido es el recorrido de la mente durante la función;
+- **nodos** con el minuto y la frase de cada momento, y las **marcas de escena** en amarillo;
+- la **cabeza mueve la cámara** (giroscopio) sobre una órbita lenta;
+- abajo, la **frase actual** y la **gráfica comprimida** de toda la sesión, con las marcas.
+
+Se instala igual que el visor (Text DAT → Run Script). Escucha en el puerto **9205** para convivir con `eeg_visor`: en el monitor, modo avanzado → salida OSC → **+ destino** `127.0.0.1:9205` → aplicar. Parámetros: órbita, exposición, hilos máximos, rótulos, resolución, escala, «dibujar cada N cuadros» y los botones **Reiniciar tejido** y **Marcar**.
+
+![Constelación](docs/capturas/10-constelacion-touchdesigner.png)
+
 ## Problemas comunes
 
 | Mensaje | Qué hacer |
@@ -168,8 +182,8 @@ Parámetros: puerto, casco, velocidad, ganancia, rótulos, resolución interna y
 | Asistente: electrodo por electrodo · *Wizard: electrode by electrode* | Asistente: conectado · *Wizard: connected* | Modo avanzado · *Advanced mode* |
 | ![Datos de la app](docs/capturas/07-datos-de-la-app.png) | ![Celular](docs/capturas/06-movil.png) | ![Conexión](docs/capturas/01-conexion-cortex.png) |
 | Asistente: datos de la app · *Wizard: Cortex app details* | Monitor en celular · *Monitor on a phone* | Conexión con Cortex · *Connecting to Cortex* |
-| ![OSC](docs/capturas/02-mensajes-osc.png) | ![Historia](docs/capturas/09-historia.png) | |
-| Mensajes OSC (simulación) · *OSC messages (simulation)* | Historia: estado, frase y sesión · *Story: state, phrase and session* | |
+| ![OSC](docs/capturas/02-mensajes-osc.png) | ![Historia](docs/capturas/09-historia.png) | ![Constelación](docs/capturas/10-constelacion-touchdesigner.png) |
+| Mensajes OSC (simulación) · *OSC messages (simulation)* | Historia: estado, frase y sesión · *Story: state, phrase and session* | Constelación en TouchDesigner · *Constellation in TouchDesigner* |
 
 ---
 

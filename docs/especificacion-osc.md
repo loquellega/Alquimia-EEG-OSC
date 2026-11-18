@@ -53,6 +53,7 @@ Salida común para todas las vías de lectura (Cortex hoy, lector propio despué
 | `/eeg/{casco}/sesion/tiempo` | `f` | segundos de sesión |
 | `/eeg/{casco}/sesion/calibracion` | `f 0–1` | progreso de la línea base (1 = lista) |
 | `/eeg/{casco}/sesion/calibrando` | `i 0/1` | evento al empezar y terminar |
+| `/eeg/marca` | `s texto` | se reenvía cada marca de escena recibida (para los visores) |
 
 ## Entrada (puerto 9210)
 
