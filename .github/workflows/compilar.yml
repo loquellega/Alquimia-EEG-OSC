@@ -41,9 +41,12 @@ jobs:
         run: |
           if [ -f dist/AlquimiaEEGOSC.exe ]; then EXE=dist/AlquimiaEEGOSC.exe; else EXE=dist/AlquimiaEEGOSC; fi
           "$EXE" --simular --no-abrir --monitor > prueba.log 2>&1 &
-          sleep 8
-          curl -sf http://127.0.0.1:9201 | grep -q "monitor de contacto"
-          cat prueba.log
+          # el ejecutable de un solo archivo se descomprime al arrancar: en máquinas lentas tarda
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:9201 | grep -q "monitor de contacto"; then echo "arrancó en ${i}x2 s"; cat prueba.log; exit 0; fi
+            sleep 2
+          done
+          cat prueba.log; exit 1
 
       - name: Empaquetar
         shell: bash
