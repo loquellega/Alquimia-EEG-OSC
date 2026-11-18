@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Alquimia EEG OSC v0.5 — vía A (Cortex)
+Alquimia EEG OSC v0.6 — vía A (Cortex)
 Puente entre los cascos Emotiv (Insight, EPOC+) y OSC para escena.
 
 Lee los flujos de Cortex (bandas, expresiones, métricas, movimiento, contacto),
@@ -71,6 +71,31 @@ def carpeta_recursos() -> Path:
 def archivo_frases() -> Path:
     propio = carpeta_programa() / "frases.json"
     return propio if propio.exists() else carpeta_recursos() / "frases.json"
+
+
+def carpeta_sesiones() -> Path:
+    return Path.cwd() / "sesiones"
+
+
+AJUSTES_UI = {   # lo que el dashboard guarda y lee
+    "colores": {"calma": "#3d8bff", "imaginacion": "#d846ef", "atencion": "#f5b301",
+                "activacion": "#ff4d2e", "valencia": "#9aa0a6", "movimiento": "#2fd6b5"},
+    "visibles": ["calma", "imaginacion", "atencion", "activacion"],
+    "paneles": {"izq": 300, "der": 320, "abajo": 230},
+    "ventana_vivo": 0, "rotulos_marcas": True, "electrodos": "compacto",
+}
+
+
+def ajustes_ui():
+    d = json.loads(json.dumps(AJUSTES_UI))
+    guardado = leer_config().get("ui") or {}
+    for k, v in guardado.items():
+        if k in d and isinstance(v, type(d[k])):
+            if isinstance(v, dict):
+                d[k].update({kk: vv for kk, vv in v.items()})
+            else:
+                d[k] = v
+    return d
 
 
 def archivo_config() -> Path:
@@ -420,6 +445,11 @@ def interprete_de(estado, n):
         estado["narrador"] = narr
         it = interp.Interprete(narr, calibracion=getattr(a, "calibracion", 60), contraste=getattr(a, "contraste", 1.0),
                                permanencia=getattr(a, "permanencia", 8))
+        guardado = leer_config().get("interpretacion") or {}
+        it.ajustar(**{k: v for k, v in guardado.items() if k in it.cfg and not getattr(a, k + "_cli", False)})
+        it.sesion.carpeta = carpeta_sesiones()
+        if estado.get("sesion_nombre"):
+            it.sesion.nombre = estado["sesion_nombre"]
         ints[n] = it
     return ints[n]
 
@@ -686,8 +716,39 @@ class Monitor:
         puerto_ws = self.puerto + 1
 
         class Pagina(http.server.BaseHTTPRequestHandler):
+            def _json(self_, d, codigo=200):
+                cuerpo = json.dumps(d, ensure_ascii=False).encode("utf-8")
+                self_.send_response(codigo)
+                self_.send_header("Content-Type", "application/json; charset=utf-8")
+                self_.send_header("Cache-Control", "no-store")
+                self_.send_header("Content-Length", str(len(cuerpo)))
+                self_.end_headers()
+                self_.wfile.write(cuerpo)
+
             def do_GET(self_):
-                if self_.path.split("?")[0] not in ("/", "/index.html"):
+                from urllib.parse import urlparse, parse_qs
+                u = urlparse(self_.path)
+                q = parse_qs(u.query)
+                if u.path == "/historia":
+                    ints = monitor.estado.get("interpretes") or {}
+                    if not ints:
+                        return self_._json({"filas": [], "total": 0, "marcas": [], "frases": [], "vacia": True})
+                    n = int((q.get("casco") or [sorted(ints)[0]])[0])
+                    it = ints.get(n) or ints[sorted(ints)[0]]
+                    try:
+                        desde = int((q.get("desde") or ["0"])[0])
+                    except ValueError:
+                        desde = 0
+                    return self_._json(it.historia_desde(desde))
+                if u.path == "/ajustes":
+                    ints = monitor.estado.get("interpretes") or {}
+                    cfg = next(iter(ints.values())).cfg if ints else (leer_config().get("interpretacion") or {})
+                    return self_._json({"ui": ajustes_ui(), "interpretacion": cfg,
+                                        "osc": {"destinos": monitor.out.destinos if monitor.out else [],
+                                                "hz": monitor.estado.get("hz", 30)},
+                                        "carpeta_sesiones": str(carpeta_sesiones()),
+                                        "config": str(archivo_config()), "frases": str(archivo_frases())})
+                if u.path not in ("/", "/index.html"):
                     self_.send_error(404)
                     return
                 cuerpo = html.read_bytes().replace(b"__WS_PORT__", str(puerto_ws).encode())
@@ -700,13 +761,34 @@ class Monitor:
             def do_POST(self_):
                 # El encabezado propio obliga al navegador a pedir permiso (CORS) a otras páginas,
                 # así que solo el monitor puede escribir aquí.
-                if self_.path not in ("/credenciales", "/osc", "/sesion") or self_.headers.get("X-Alquimia") != "1":
+                if self_.path not in ("/credenciales", "/osc", "/sesion", "/ajustes") or self_.headers.get("X-Alquimia") != "1":
                     self_.send_error(403)
                     return
                 try:
                     n = int(self_.headers.get("Content-Length", "0"))
                     d = json.loads(self_.rfile.read(min(n, 4096)) or b"{}")
-                    if self_.path == "/sesion":
+                    if self_.path == "/ajustes":
+                        ui = d.get("ui")
+                        if isinstance(ui, dict):
+                            actual = leer_config().get("ui") or {}
+                            for k in AJUSTES_UI:
+                                if k in ui:
+                                    actual[k] = ui[k]
+                            guardar_config(ui=actual)
+                        it_cfg = d.get("interpretacion")
+                        if isinstance(it_cfg, dict):
+                            limpio = {}
+                            for k, (lo, hi) in {"calibracion": (5, 600), "contraste": (0.1, 5), "suavizado": (0.2, 60),
+                                                "permanencia": (1, 120), "margen": (0.01, 0.4), "cada": (5, 600)}.items():
+                                if k in it_cfg:
+                                    v = float(it_cfg[k])
+                                    if not (lo <= v <= hi):
+                                        raise ValueError
+                                    limpio[k] = v
+                            guardar_config(interpretacion={**(leer_config().get("interpretacion") or {}), **limpio})
+                            for it in (monitor.estado.get("interpretes") or {}).values():
+                                it.ajustar(**limpio)
+                    elif self_.path == "/sesion":
                         ok_ = sesion_accion(monitor.estado, str(d.get("accion", "")), d)
                         if not ok_:
                             raise ValueError
@@ -805,11 +887,27 @@ def sesion_accion(estado, accion, d=None):
             out.send("/eeg/marca", [texto or "marca"])
         log("Marca:", texto or "(sin texto)")
     elif accion == "terminar":
-        exportar_sesiones(estado, reiniciar=True)
-    elif accion == "reiniciar":
+        exportar_sesiones(estado)
         for it in ints.values():
-            it.sesion.reiniciar()
-        log("Sesión reiniciada.")
+            it.sesion.detener()
+        log("Sesión terminada. Pulsa «iniciar» para empezar otra.")
+    elif accion in ("iniciar", "reiniciar"):
+        nombre = str(d.get("nombre") or "").strip()[:80] or f"sesión {datetime.now():%H:%M}"
+        estado["sesion_nombre"] = nombre
+        for it in ints.values():
+            if accion == "iniciar" and it.sesion.grabando and it.sesion.filas:
+                base = it.sesion.exportar(it.narrador, etiqueta=f"casco{it_n(estado, it)}")
+                if base:
+                    log("Sesión anterior guardada:", base.with_suffix(".txt"))
+            it.sesion.reiniciar(nombre)
+        log(f"Sesión iniciada: {nombre}")
+    elif accion == "nombre":
+        nombre = str(d.get("nombre") or "").strip()[:80]
+        if not nombre:
+            return False
+        estado["sesion_nombre"] = nombre
+        for it in ints.values():
+            it.sesion.nombre = nombre
     elif accion == "recalibrar":
         for it in ints.values():
             it.recalibrar()
@@ -828,10 +926,19 @@ def sesion_accion(estado, accion, d=None):
     return True
 
 
+def it_n(estado, it):
+    for n, x in (estado.get("interpretes") or {}).items():
+        if x is it:
+            return n
+    return 0
+
+
 def exportar_sesiones(estado, reiniciar=False):
     hechos = []
     for n, it in (estado.get("interpretes") or {}).items():
-        base = it.sesion.exportar(it.narrador, etiqueta=f"sesion_casco{n}")
+        if not it.sesion.grabando:
+            continue   # ya se guardó al terminarla
+        base = it.sesion.exportar(it.narrador, etiqueta=f"casco{n}")
         if base:
             hechos.append(str(base))
             log("Sesión guardada:", base.with_suffix(".txt"), "(.json, .csv)")
@@ -851,12 +958,14 @@ async def entrada_osc(estado, puerto):
     def orden(accion, con_texto=False):
         def h(_addr, *x):
             # sin valor de retorno: python-osc lo mandaría de vuelta como respuesta
-            sesion_accion(estado, accion, {"texto": " ".join(str(v) for v in x)} if con_texto else {})
+            texto = " ".join(str(v) for v in x)
+            sesion_accion(estado, accion, {"texto": texto, "nombre": texto} if con_texto else {})
         return h
 
     disp.map("/eeg/marca", orden("marcar", True))
     for accion in ("terminar", "reiniciar", "recalibrar"):
         disp.map(f"/eeg/sesion/{accion}", orden(accion))
+    disp.map("/eeg/sesion/iniciar", orden("iniciar", True))
     disp.map("/eeg/frases/recargar", orden("recargar_frases"))
     try:
         srv = AsyncIOOSCUDPServer(("0.0.0.0", puerto), disp, asyncio.get_running_loop())
@@ -1004,13 +1113,15 @@ def main():
     args.destino_cli = bool(args.destino)
     args.destino = args.destino or ["127.0.0.1:9200"]
     args.hz_cli = args.hz is not None
+    for k in ("calibracion", "contraste", "permanencia"):
+        setattr(args, k + "_cli", any(a.startswith("--" + k) for a in sys.argv))
     args.hz = args.hz or 30
     if CONGELADO and len(sys.argv) == 1:
         args.monitor = True  # doble clic en el .exe: abre el monitor
     if CONGELADO:
         os.chdir(carpeta_programa())  # las grabaciones quedan junto al .exe
     if not args.reproducir:
-        log("Alquimia EEG OSC v0.5 · Ctrl+C o cerrar esta ventana para salir.")
+        log("Alquimia EEG OSC v0.6 · Ctrl+C o cerrar esta ventana para salir.")
     try:
         asyncio.run(principal(args))
     except KeyboardInterrupt:

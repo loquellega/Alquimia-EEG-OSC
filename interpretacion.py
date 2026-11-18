@@ -127,32 +127,56 @@ class Narrador:
 # ---------------------------------------------------------------------------
 # Sesión
 # ---------------------------------------------------------------------------
+COLUMNAS = ["t", "estado", "intensidad", "calibrando", "valido"] + INDICES
+
+
+def _slug(texto):
+    import unicodedata
+    t = unicodedata.normalize("NFD", str(texto)).encode("ascii", "ignore").decode()
+    t = "".join(c if c.isalnum() else "-" for c in t.lower()).strip("-")
+    while "--" in t:
+        t = t.replace("--", "-")
+    return t[:40] or "sesion"
+
+
 class Sesion:
+    PASO = 0.5   # segundos entre muestras de la línea de tiempo
+
     def __init__(self, carpeta="sesiones"):
         self.carpeta = Path(carpeta)
         self.reiniciar()
 
-    def reiniciar(self):
+    def reiniciar(self, nombre="sesión"):
+        self.nombre = str(nombre or "sesión").strip()[:80]
         self.inicio_reloj = datetime.now()
         self.t0 = time.monotonic()
-        self.filas = []          # una por segundo
+        self.filas = []          # cada PASO segundos
         self.marcas = []         # (t, texto)
         self.frases = []         # (t, estado, frase)
         self.parpadeos = 0
         self.ultima = -1.0
+        self.grabando = True
+        self.fin = None
+
+    def detener(self):
+        self.grabando = False
+        self.fin = round(self.t(), 2)
 
     def t(self):
-        return time.monotonic() - self.t0
+        return (self.fin if self.fin is not None else time.monotonic() - self.t0)
 
     def marcar(self, texto):
-        self.marcas.append((round(self.t(), 2), str(texto)))
+        if self.grabando:
+            self.marcas.append((round(self.t(), 2), str(texto)))
 
     def registrar(self, idx, estado, intensidad, calibrando, valido):
+        if not self.grabando:
+            return
         t = self.t()
-        if t - self.ultima < 1.0:
+        if t - self.ultima < self.PASO:
             return
         self.ultima = t
-        fila = {"t": round(t, 1), "estado": estado, "intensidad": round(intensidad, 3),
+        fila = {"t": round(t, 2), "estado": estado, "intensidad": round(intensidad, 3),
                 "calibrando": int(calibrando), "valido": int(valido)}
         fila.update({k: round(idx.get(k, 0.5), 3) for k in INDICES})
         self.filas.append(fila)
@@ -177,16 +201,16 @@ class Sesion:
             out.append(cur)
         res = []
         for c in out:
-            if c["fin"] - c["inicio"] + 1 >= minimo:
+            if c["fin"] - c["inicio"] + self.PASO >= minimo:
                 frs = [fr for (t, e, fr) in self.frases if e == c["estado"] and c["inicio"] - 3 <= t <= c["fin"] + 1]
-                res.append({"estado": c["estado"], "inicio": c["inicio"], "fin": c["fin"] + 1,
+                res.append({"estado": c["estado"], "inicio": c["inicio"], "fin": round(c["fin"] + self.PASO, 2),
                             "intensidad_media": round(c["suma"] / c["n"], 3), "pico": round(c["pico"], 3),
                             "frase": frs[0] if frs else ""})
         return res
 
     def resumen(self):
         utiles = [f for f in self.filas if not f["calibrando"]]
-        dur = utiles[-1]["t"] - utiles[0]["t"] + 1 if utiles else 0
+        dur = utiles[-1]["t"] - utiles[0]["t"] + self.PASO if utiles else 0
         por = {}
         for f in utiles:
             por[f["estado"]] = por.get(f["estado"], 0) + 1
@@ -197,7 +221,9 @@ class Sesion:
                 m = max(utiles, key=lambda f: f[k])
                 picos[k] = {"t": m["t"], "valor": m[k]}
         return {
+            "nombre": self.nombre,
             "inicio": self.inicio_reloj.isoformat(timespec="seconds"),
+            "total_s": round(self.t(), 1),
             "duracion_s": round(dur, 1),
             "porcentaje": {e: round(100 * n / len(utiles), 1) for e, n in sorted(por.items(), key=lambda x: -x[1])} if utiles else {},
             "promedios": prom,
@@ -210,7 +236,7 @@ class Sesion:
     def relato(self, narrador=None):
         r = self.resumen()
         nombre = (lambda e: narrador.nombre(e)) if narrador else (lambda e: NOMBRE.get(e, e))
-        lineas = [f"Sesión del {self.inicio_reloj:%d/%m/%Y %H:%M} · {mmss(r['duracion_s'])} analizados "
+        lineas = [f"{self.nombre} · {self.inicio_reloj:%d/%m/%Y %H:%M} · {mmss(r['duracion_s'])} analizados "
                   f"(de {mmss(self.filas[-1]['t'] if self.filas else 0)} en total)", ""]
         marcas = list(r["marcas"])
         for fr in r["fragmentos"]:
@@ -232,9 +258,11 @@ class Sesion:
         if not self.filas:
             return None
         self.carpeta.mkdir(parents=True, exist_ok=True)
-        base = self.carpeta / f"{etiqueta}_{self.inicio_reloj:%Y%m%d_%H%M%S}"
-        datos = {"resumen": self.resumen(), "frases": [{"t": t, "estado": e, "frase": f} for t, e, f in self.frases],
-                 "linea_de_tiempo": self.filas}
+        base = self.carpeta / f"{self.inicio_reloj:%Y%m%d_%H%M%S}_{_slug(self.nombre)}_{etiqueta}"
+        datos = {"version": 2, "resumen": self.resumen(),
+                 "frases": [{"t": t, "estado": e, "frase": f} for t, e, f in self.frases],
+                 "columnas": COLUMNAS,
+                 "linea_de_tiempo": [[f[k] for k in COLUMNAS] for f in self.filas]}
         base.with_suffix(".json").write_text(json.dumps(datos, ensure_ascii=False, indent=1), encoding="utf-8")
         with open(base.with_suffix(".csv"), "w", newline="", encoding="utf-8") as fh:
             w = csv.DictWriter(fh, fieldnames=list(self.filas[0].keys()) + ["marca"])
@@ -242,8 +270,12 @@ class Sesion:
             marcas = dict()
             for t, x in self.marcas:
                 marcas.setdefault(int(t), []).append(x)
+            usadas = set()
             for f in self.filas:
-                w.writerow({**f, "marca": " | ".join(marcas.get(int(f["t"]), []))})
+                seg = int(f["t"])
+                texto = "" if seg in usadas else " | ".join(marcas.get(seg, []))
+                usadas.add(seg)
+                w.writerow({**f, "marca": texto})
         base.with_suffix(".txt").write_text(self.relato(narrador), encoding="utf-8")
         return base
 
@@ -257,8 +289,8 @@ class Interprete:
     def __init__(self, narrador, calibracion=60.0, contraste=1.0, suavizado=4.0, permanencia=8.0,
                  margen=0.08, cada=25.0, usar_metricas=True):
         self.narrador = narrador
-        self.cfg = dict(calibracion=calibracion, contraste=contraste, suavizado=suavizado,
-                        permanencia=permanencia, margen=margen, cada=cada, usar_metricas=usar_metricas)
+        self.cfg = dict(calibracion=float(calibracion), contraste=float(contraste), suavizado=float(suavizado),
+                        permanencia=float(permanencia), margen=float(margen), cada=float(cada), usar_metricas=bool(usar_metricas))
         self.base = {k: Base() for k in INDICES if k != "movimiento"}
         self.sesion = Sesion()
         self.recalibrar()
@@ -411,6 +443,17 @@ class Interprete:
         out.send(f"{p}/sesion/calibracion", [float(1.0 if not self.calibrando else cal)])
         out.send(f"{p}/sesion/tiempo", [float(self.sesion.t())])
 
+    def historia_desde(self, n=0):
+        s = self.sesion
+        n = max(0, int(n))
+        filas = s.filas[n:]
+        return {"nombre": s.nombre, "inicio": s.inicio_reloj.isoformat(timespec="seconds"),
+                "grabando": s.grabando, "t": round(s.t(), 2), "total": len(s.filas), "desde": n,
+                "columnas": COLUMNAS, "filas": [[f[k] if k != "estado" else ID[f["estado"]] for k in COLUMNAS] for f in filas],
+                "marcas": [{"t": t, "texto": x} for t, x in s.marcas],
+                "frases": [{"t": t, "estado": e, "frase": f} for t, e, f in s.frases],
+                "calibrado": not self.calibrando}
+
     def resumen_vivo(self, ahora=None):
         ahora = time.monotonic() if ahora is None else ahora
         cal = None
@@ -421,5 +464,5 @@ class Interprete:
                 "frase": self.frase, "calibracion": cal,
                 "indices": {k: round(v, 3) for k, v in self.idx.items()},
                 "sesion_t": round(self.sesion.t(), 1), "marcas": len(self.sesion.marcas),
-                "historial": [[f["t"], ID[f["estado"]]] + [f[k] for k in INDICES] for f in self.sesion.filas[-600:]],
-                "cfg": self.cfg}
+                "sesion_nombre": self.sesion.nombre, "grabando": self.sesion.grabando,
+                "filas": len(self.sesion.filas), "cfg": self.cfg}

@@ -3,58 +3,132 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Alquimia EEG OSC · monitor de contacto</title>
+<title>Alquimia EEG OSC</title>
 <style>
 :root{
   --a-bg:#0a0a0a; --a-panel:#101010; --a-bar:#1c1c1c; --a-line:#2e2e2e; --a-line-ctl:#3a3a3a; --a-hover:#1f1f1f;
   --a-ink:#d2d2d2; --a-ink-strong:#fff; --a-ink-dim:#8f8f8f;
   --a-accent:#76c411; --a-accent-ink:#a5e04a; --a-accent-bg:#1b2512;
-  --a-radius:3px; --a-radius-sm:2px; --a-gap:8px; --a-pad:10px; --a-bar-h:24px; --a-ctl-h:32px; --a-t:120ms;
+  --a-radius:3px; --a-radius-sm:2px; --a-pad:10px; --a-bar-h:24px; --a-ctl-h:30px; --a-t:120ms;
   --a-font:Inter,Arial,Helvetica,sans-serif; --a-size:12px; --a-size-sm:11px;
-  /* niveles de contacto (estado del electrodo: excepción semántica, no decoración) */
   --q0:#3a3a3a; --q1:#d64b3c; --q2:#d9822b; --q3:#c9b23a; --q4:var(--a-accent);
+  --rec:#e5484d; --marca:#f2d06b;
+  --izq:300px; --der:320px; --abajo:230px;
 }
 *{box-sizing:border-box}
-html,body{margin:0;height:100%;background:var(--a-bg);color:var(--a-ink);font:var(--a-size)/1.45 var(--a-font);font-variant-numeric:tabular-nums}
-button{font:inherit;color:var(--a-ink);background:var(--a-panel);border:1px solid var(--a-line-ctl);border-radius:var(--a-radius);height:var(--a-ctl-h);padding:0 12px;cursor:pointer;transition:background var(--a-t),border-color var(--a-t),color var(--a-t)}
+html,body{margin:0;height:100%;background:var(--a-bg);color:var(--a-ink);font:var(--a-size)/1.45 var(--a-font);font-variant-numeric:tabular-nums;overflow:hidden}
+button{font:inherit;color:var(--a-ink);background:var(--a-panel);border:1px solid var(--a-line-ctl);border-radius:var(--a-radius);height:var(--a-ctl-h);padding:0 11px;cursor:pointer;transition:background var(--a-t),border-color var(--a-t),color var(--a-t);white-space:nowrap}
 button:hover{background:var(--a-hover)}
-button:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--a-accent);outline-offset:1px}
+button:focus-visible,[tabindex]:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--a-accent);outline-offset:1px}
 button.primario{border-color:var(--a-accent);color:var(--a-accent-ink);background:var(--a-accent-bg)}
-button:disabled{opacity:.45;cursor:default}
+button.rec{border-color:var(--rec);color:#ffb3b5;background:#2a1213}
+button:disabled{opacity:.4;cursor:default}
+button.chico{height:24px;padding:0 8px;font-size:var(--a-size-sm)}
+input,select{font:13px var(--a-font);height:var(--a-ctl-h);background:var(--a-bg);color:var(--a-ink-strong);border:1px solid var(--a-line-ctl);border-radius:var(--a-radius);padding:0 9px;min-width:0}
+input:focus,select:focus{outline:none;border-color:var(--a-accent)}
+input[type=color]{padding:2px;width:44px;cursor:pointer}
+input[type=checkbox]{height:auto;accent-color:var(--a-accent)}
+input.mal{border-color:var(--q1)}
+code{color:var(--a-ink-strong);background:var(--a-bar);padding:1px 5px;border-radius:var(--a-radius-sm)}
 .seg{display:inline-flex;border:1px solid var(--a-line-ctl);border-radius:var(--a-radius);overflow:hidden}
 .seg button{border:0;border-radius:0;height:26px;background:transparent;color:var(--a-ink-dim)}
 .seg button+button{border-left:1px solid var(--a-line-ctl)}
-.seg button[aria-pressed="true"]{color:var(--a-ink-strong);background:var(--a-hover)}
+.seg button[aria-selected="true"],.seg button[aria-pressed="true"]{color:var(--a-ink-strong);background:var(--a-hover)}
+.dim{color:var(--a-ink-dim)}
+.oculto{display:none!important}
 
-header{display:flex;align-items:center;gap:14px;height:44px;padding:0 16px;padding-top:env(safe-area-inset-top);border-bottom:1px solid var(--a-line)}
-header .titulo{color:var(--a-ink-strong);letter-spacing:.02em}
-header .titulo span{color:var(--a-ink-dim)}
+/* encabezado */
+header{display:flex;align-items:center;gap:14px;height:44px;padding:0 14px;border-bottom:1px solid var(--a-line)}
+header .titulo{color:var(--a-ink-strong);letter-spacing:.02em;white-space:nowrap}
 header .der{margin-left:auto;display:flex;gap:10px;align-items:center}
-.pastilla{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border:1px solid var(--a-line-ctl);border-radius:11px;color:var(--a-ink-dim);font-size:var(--a-size-sm)}
+.pastilla{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border:1px solid var(--a-line-ctl);border-radius:11px;color:var(--a-ink-dim);font-size:var(--a-size-sm);white-space:nowrap}
 .pastilla i{width:7px;height:7px;border-radius:50%;background:var(--q0)}
 .pastilla.vivo{border-color:var(--a-accent);color:var(--a-accent-ink);background:var(--a-accent-bg)}
 .pastilla.vivo i{background:var(--a-accent)}
 .pastilla.medio i{background:var(--q2)}
 .pastilla.mal i{background:var(--q1)}
+.pastilla.rec{border-color:var(--rec);color:#ffb3b5}
+.pastilla.rec i{background:var(--rec);animation:lat 1.6s ease-in-out infinite}
+@keyframes lat{50%{opacity:.3}}
+@media (prefers-reduced-motion:reduce){.pastilla.rec i{animation:none}}
 .etiqueta-sim{font-size:var(--a-size-sm);color:var(--a-ink-dim);border:1px dashed var(--a-line-ctl);border-radius:var(--a-radius-sm);padding:1px 6px}
 
-main{display:grid;grid-template-columns:minmax(360px,1fr) 440px;gap:16px;padding:16px;height:calc(100% - 44px)}
-@media (max-width:900px){main{grid-template-columns:1fr;height:auto}
-  header{height:auto;flex-wrap:wrap;row-gap:8px;padding-top:calc(8px + env(safe-area-inset-top));padding-bottom:8px}
-  header .titulo span{display:none} header .der{margin-left:0;width:100%;justify-content:space-between}
-  footer{position:static;text-align:right;padding:0 16px 12px}}
-
-.ventana{background:var(--a-panel);border:1px solid var(--a-line);border-radius:var(--a-radius);display:flex;flex-direction:column;min-height:0}
-.ventana>.barra{height:var(--a-bar-h);display:flex;align-items:center;padding:0 var(--a-pad);background:var(--a-bar);color:var(--a-ink);font-size:var(--a-size-sm);border-bottom:1px solid var(--a-line);letter-spacing:.06em;text-transform:uppercase}
-.ventana>.barra .extra{margin-left:auto;text-transform:none;letter-spacing:0;color:var(--a-ink-dim)}
-.ventana>.cuerpo{padding:12px var(--a-pad);overflow:auto;scrollbar-width:thin;scrollbar-color:var(--a-line-ctl) transparent}
+/* ventanas */
+.ventana{background:var(--a-panel);border:1px solid var(--a-line);border-radius:var(--a-radius);display:flex;flex-direction:column;min-height:0;min-width:0}
+.ventana>.barra{height:var(--a-bar-h);flex:none;white-space:nowrap;overflow:hidden;display:flex;align-items:center;gap:8px;padding:0 var(--a-pad);background:var(--a-bar);font-size:var(--a-size-sm);border-bottom:1px solid var(--a-line);letter-spacing:.06em;text-transform:uppercase}
+.ventana>.barra .extra{margin-left:auto;text-transform:none;letter-spacing:0;color:var(--a-ink-dim);display:flex;gap:6px;align-items:center}
+.ventana>.cuerpo{padding:10px var(--a-pad);overflow:auto;scrollbar-width:thin;scrollbar-color:var(--a-line-ctl) transparent;min-height:0}
+.columna{display:flex;flex-direction:column;gap:10px;min-height:0;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--a-line-ctl) transparent}
 .columna>.ventana{flex:none}
-.columna{display:flex;flex-direction:column;gap:12px;min-height:0;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--a-line-ctl) transparent}
+details.ventana>summary{list-style:none;cursor:pointer}
+details.ventana>summary::-webkit-details-marker{display:none}
+details.ventana>summary::before{content:"▸";margin-right:6px;color:var(--a-ink-dim)}
+details.ventana[open]>summary::before{content:"▾"}
 
-/* cabeza */
-.cabeza{flex:1;display:flex;flex-direction:column}
-.cabeza .cuerpo{flex:1;display:flex;align-items:center;justify-content:center;position:relative}
-svg#mapa{width:100%;height:100%;max-height:72vh}
+/* vistas */
+main{height:calc(100% - 44px)}
+.vista{height:100%}
+
+/* conectar */
+#vConectar{display:grid;grid-template-columns:minmax(320px,1fr) 440px;gap:14px;padding:14px}
+#vConectar .mapa-grande{display:flex;flex-direction:column}
+#vConectar .mapa-grande .cuerpo{flex:1;display:flex;align-items:center;justify-content:center}
+
+/* en vivo: rejilla redimensionable */
+#vVivo{display:grid;grid-template-columns:var(--izq) 6px minmax(300px,1fr) 6px var(--der);padding:10px;gap:0}
+#pCentro{display:grid;grid-template-rows:minmax(160px,1fr) 6px var(--abajo);min-width:0;min-height:0}
+.div-v{cursor:col-resize;position:relative}
+.div-h{cursor:row-resize;position:relative}
+.div-v::after,.div-h::after{content:"";position:absolute;background:var(--a-line);transition:background var(--a-t)}
+.div-v::after{left:2px;top:0;bottom:0;width:1px}
+.div-h::after{top:2px;left:0;right:0;height:1px}
+.div-v:hover::after,.div-h:hover::after,.div-v.arrastrando::after,.div-h.arrastrando::after{background:var(--a-accent)}
+
+/* línea de tiempo */
+#tl{display:flex;flex-direction:column;min-height:0}
+#tl .cuerpo{flex:1;display:flex;flex-direction:column;padding:6px;gap:6px;overflow:hidden}
+#tlLienzo{position:relative;flex:1;min-height:100px}
+#tlCanvas,#tlMini{display:block;width:100%;height:100%;cursor:crosshair}
+#tlMini{height:34px;flex:none;cursor:pointer;border-top:1px solid var(--a-line)}
+#tlTip{position:absolute;pointer-events:none;background:rgba(16,16,16,.96);border:1px solid var(--a-line-ctl);border-radius:var(--a-radius);padding:7px 9px;min-width:190px;max-width:300px;font-size:var(--a-size-sm);z-index:5}
+#tlTip .t{color:var(--a-ink-strong);font-size:13px;margin-bottom:3px}
+#tlTip .r{display:grid;grid-template-columns:10px 1fr auto;gap:6px;align-items:center}
+#tlTip .r b{width:8px;height:8px;border-radius:50%}
+#tlTip .fr{margin-top:5px;color:var(--a-ink-strong)}
+#tlTip .mk{margin-top:4px;color:var(--marca)}
+.herr{display:flex;gap:6px;align-items:center}
+.herr .rango{color:var(--a-ink-dim);margin-left:4px}
+
+/* estado actual */
+#pAbajo{display:grid;grid-template-columns:minmax(220px,1fr) minmax(220px,1fr);gap:10px;min-height:0}
+.estado-grande{font-size:26px;font-weight:600;color:var(--a-ink-strong);line-height:1.1}
+.frase{font-size:15px;color:var(--a-ink-strong);margin:8px 0 6px;min-height:20px}
+.fila{display:grid;grid-template-columns:92px 1fr 44px;gap:8px;align-items:center;height:22px}
+.fila .n{color:var(--a-ink-strong);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fila .v{text-align:right;color:var(--a-ink-dim);font-size:var(--a-size-sm)}
+.medidor{height:4px;background:var(--a-line);border-radius:2px;overflow:hidden}
+.medidor>i{display:block;height:100%;width:0;background:var(--a-accent);transition:width var(--a-t)}
+.dato{display:grid;grid-template-columns:1fr auto;gap:8px;min-height:21px;align-items:center}
+.dato span:first-child{color:var(--a-ink-dim)}
+.dato span:last-child{color:var(--a-ink-strong);text-align:right;overflow:hidden;text-overflow:ellipsis}
+.aviso{border-left:2px solid var(--q2);padding:6px 10px;background:#1a140c;color:var(--a-ink);margin:6px 0;border-radius:0 var(--a-radius-sm) var(--a-radius-sm) 0}
+.aviso.listo{border-left-color:var(--a-accent);background:var(--a-accent-bg)}
+.acciones{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px}
+.campo{display:flex;flex-direction:column;gap:4px;margin:6px 0;color:var(--a-ink-dim);font-size:var(--a-size-sm)}
+.campo.linea{flex-direction:row;align-items:center;gap:8px}
+.campo.linea input{width:76px}
+.con-boton{display:flex;gap:6px}.con-boton input{flex:1}
+
+/* marcas */
+#listaMarcas{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:2px}
+#listaMarcas li{display:grid;grid-template-columns:46px 1fr;gap:8px;padding:4px 6px;border-radius:var(--a-radius-sm);cursor:pointer}
+#listaMarcas li:hover,#listaMarcas li.sel{background:var(--a-hover)}
+#listaMarcas li span:first-child{color:var(--marca)}
+.reparto{display:flex;height:8px;border-radius:2px;overflow:hidden;margin:6px 0 4px;background:var(--a-line)}
+.reparto i{display:block;height:100%}
+
+/* mapa de electrodos */
+svg.mapa{width:100%;height:100%}
 .contorno{fill:none;stroke:var(--a-line-ctl);stroke-width:1.5}
 .guia{fill:none;stroke:var(--a-line);stroke-width:1;stroke-dasharray:3 5}
 .elec circle.punto{stroke:#000;stroke-width:1;transition:fill var(--a-t)}
@@ -63,175 +137,235 @@ svg#mapa{width:100%;height:100%;max-height:72vh}
 .elec.objetivo .anillo{opacity:1;animation:pulso 1.2s ease-in-out infinite}
 @keyframes pulso{0%,100%{stroke-opacity:1}50%{stroke-opacity:.25}}
 @media (prefers-reduced-motion:reduce){.elec.objetivo .anillo{animation:none}}
-.leyenda{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;padding:8px 0 2px;color:var(--a-ink-dim);font-size:var(--a-size-sm)}
-.leyenda b{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+.leyenda{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;padding:6px 0 2px;color:var(--a-ink-dim);font-size:var(--a-size-sm)}
+.leyenda b{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;vertical-align:-1px}
 
 /* asistente */
 .pasos{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
-.pasos li{display:flex;gap:10px;align-items:center;height:28px;padding:0 8px;border-radius:var(--a-radius-sm);color:var(--a-ink-dim)}
+.pasos li{display:flex;gap:10px;align-items:center;height:27px;padding:0 8px;border-radius:var(--a-radius-sm);color:var(--a-ink-dim)}
 .pasos li .num{width:18px;height:18px;border:1px solid var(--a-line-ctl);border-radius:50%;display:grid;place-items:center;font-size:10px}
 .pasos li.hecho{color:var(--a-ink)}
 .pasos li.hecho .num{border-color:var(--a-accent);color:var(--a-accent-ink)}
 .pasos li.actual{background:var(--a-hover);color:var(--a-ink-strong)}
-.pasos li.actual .num{border-color:var(--a-ink-strong)}
 .tarjeta h2{margin:0 0 6px;font-size:18px;font-weight:600;color:var(--a-ink-strong)}
-.tarjeta p{margin:0 0 10px;color:var(--a-ink)}
-.tarjeta ul{margin:6px 0 12px;padding-left:16px;color:var(--a-ink)}
-.tarjeta ul li{margin:3px 0}
-.dim{color:var(--a-ink-dim)}
+.tarjeta p{margin:0 0 10px}
+.tarjeta ul,.tarjeta ol{margin:6px 0 12px;padding-left:18px}
+.tarjeta li{margin:3px 0}
 .grande{display:flex;align-items:baseline;gap:12px;margin:4px 0 10px}
-.grande .canal{font-size:34px;font-weight:600;color:var(--a-ink-strong);letter-spacing:.02em}
-.grande .nivel{font-size:14px}
-.acciones{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
-.aviso{border-left:2px solid var(--q2);padding:6px 10px;background:#1a140c;color:var(--a-ink);margin:8px 0;border-radius:0 var(--a-radius-sm) var(--a-radius-sm) 0}
-.listo{border-left-color:var(--a-accent);background:var(--a-accent-bg)}
+.grande .canal{font-size:34px;font-weight:600;color:var(--a-ink-strong)}
 
-/* medidores */
-.fila{display:grid;grid-template-columns:52px 1fr 78px;gap:10px;align-items:center;height:24px}
-.fila .n{color:var(--a-ink-strong)}
-.fila .v{text-align:right;color:var(--a-ink-dim);font-size:var(--a-size-sm)}
-.medidor{height:3px;background:var(--a-line);border-radius:2px;overflow:hidden}
-.medidor>i{display:block;height:100%;width:0;background:var(--a-accent);transition:width var(--a-t)}
-.dato{display:grid;grid-template-columns:1fr auto;height:22px;align-items:center}
-.dato span:first-child{color:var(--a-ink-dim)}
-.dato span:last-child{color:var(--a-ink-strong)}
-.parpadeo{display:inline-block;width:10px;height:10px;border-radius:50%;border:1px solid var(--a-line-ctl);vertical-align:-1px}
-.parpadeo.on{background:var(--a-ink-strong);border-color:var(--a-ink-strong)}
-.campo{display:flex;flex-direction:column;gap:4px;margin:8px 0;color:var(--a-ink-dim);font-size:var(--a-size-sm)}
-.campo input{height:var(--a-ctl-h);background:var(--a-bg);color:var(--a-ink-strong);border:1px solid var(--a-line-ctl);border-radius:var(--a-radius);padding:0 10px;font:13px var(--a-font);width:100%;transition:border-color var(--a-t)}
-.campo input:focus{outline:none;border-color:var(--a-accent)}
-.con-boton{display:flex;gap:6px}.con-boton button{flex:none}
-.instr{margin:6px 0 10px;padding-left:18px}
-.campo.en-linea{flex-direction:row;align-items:center;gap:6px;margin:0}
-.campo.en-linea input{width:64px}
-.dest{display:flex;gap:6px;margin-bottom:6px}
-.dest input{flex:1;height:var(--a-ctl-h);background:var(--a-bg);color:var(--a-ink-strong);border:1px solid var(--a-line-ctl);border-radius:var(--a-radius);padding:0 10px;font:13px var(--a-font)}
-.dest input:focus{outline:none;border-color:var(--a-accent)}
-.dest input.mal{border-color:var(--q1)}.instr li{margin:3px 0}
-code{color:var(--a-ink-strong);background:var(--a-bar);padding:1px 5px;border-radius:var(--a-radius-sm)}
-.oculto{display:none!important}
-footer{position:fixed;right:16px;bottom:8px;color:#5c5c5c;font-size:10px;padding-bottom:env(safe-area-inset-bottom)}
+/* ajustes */
+#vAjustes{overflow:auto;padding:16px;scrollbar-width:thin;scrollbar-color:var(--a-line-ctl) transparent}
+#vAjustes .rejilla{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:12px;max-width:1400px;margin:0 auto}
+.color-fila{display:grid;grid-template-columns:20px 1fr 52px 74px;gap:8px;align-items:center;height:34px}
+.dest{display:flex;gap:6px;margin-bottom:6px}.dest input{flex:1}
+
+footer{position:fixed;right:14px;bottom:6px;color:#5c5c5c;font-size:10px;pointer-events:none}
+@media (max-width:900px){
+  html,body{overflow:auto}
+  #vConectar{grid-template-columns:1fr}
+  #vVivo{grid-template-columns:1fr;height:auto}
+  .div-v,.div-h{display:none}
+  #pCentro{grid-template-rows:420px var(--abajo)}
+  #pAbajo{grid-template-columns:1fr}
+}
 </style>
 </head>
 <body>
 <header>
-  <div class="titulo">Alquimia EEG OSC <span>· monitor de contacto</span></div>
-  <div class="seg" role="group" aria-label="Modo">
-    <button id="bAsis" aria-pressed="true" title="Asistente (1)">asistente</button>
-    <button id="bAvan" aria-pressed="false" title="Avanzado (2)">avanzado</button>
+  <div class="titulo">Alquimia EEG OSC</div>
+  <div class="seg" role="tablist" aria-label="Vistas">
+    <button role="tab" id="tConectar" aria-selected="false" title="Conectar (1)">conectar</button>
+    <button role="tab" id="tVivo" aria-selected="true" title="En vivo (2)">en vivo</button>
+    <button role="tab" id="tAjustes" aria-selected="false" title="Ajustes (3)">ajustes</button>
   </div>
   <div class="seg oculto" role="group" aria-label="Casco" id="selCasco"></div>
   <div class="der">
     <span id="sim" class="etiqueta-sim oculto">simulación</span>
+    <span id="pRec" class="pastilla" title="Sesión"><i></i><span>—</span></span>
     <span id="estado" class="pastilla" role="status"><i></i><span>sin puente</span></span>
   </div>
 </header>
 
 <main>
-  <section class="ventana cabeza" aria-label="Mapa de electrodos">
-    <div class="barra">electrodos <span class="extra" id="modelo">—</span></div>
-    <div class="cuerpo">
-      <svg id="mapa" viewBox="-130 -135 260 270" aria-hidden="true">
-        <path class="contorno" d="M -12 -112 L 0 -126 L 12 -112"/>
-        <ellipse class="contorno" cx="-108" cy="0" rx="8" ry="20"/>
-        <ellipse class="contorno" cx="108" cy="0" rx="8" ry="20"/>
-        <circle class="contorno" cx="0" cy="0" r="105"/>
-        <circle class="guia" cx="0" cy="0" r="70"/>
-        <line class="guia" x1="0" y1="-105" x2="0" y2="105"/>
-        <line class="guia" x1="-105" y1="0" x2="105" y2="0"/>
-        <g id="electrodos"></g>
-      </svg>
+<!-- ====================== CONECTAR ====================== -->
+<section id="vConectar" class="vista oculto" role="tabpanel" aria-label="Conectar">
+  <div class="ventana mapa-grande">
+    <div class="barra">electrodos <span class="extra" id="modeloC">—</span></div>
+    <div class="cuerpo"><svg class="mapa" id="mapaC" viewBox="-130 -135 260 270" aria-hidden="true"></svg></div>
+    <div class="leyenda" id="leyendaC"></div>
+  </div>
+  <div class="columna">
+    <div class="ventana"><div class="barra">asistente <span class="extra" id="pasoN"></span></div>
+      <div class="cuerpo"><ol class="pasos" id="listaPasos"></ol></div></div>
+    <div class="ventana" aria-live="polite"><div class="barra">paso actual</div>
+      <div class="cuerpo tarjeta" id="tarjeta"></div></div>
+  </div>
+</section>
+
+<!-- ====================== EN VIVO ====================== -->
+<section id="vVivo" class="vista" role="tabpanel" aria-label="En vivo">
+  <aside class="columna" id="pIzq">
+    <div class="ventana">
+      <div class="barra">electrodos <span class="extra" id="modeloV">—</span></div>
+      <div class="cuerpo" style="padding:4px"><svg class="mapa" id="mapaV" viewBox="-130 -135 260 270" style="max-height:240px" aria-hidden="true"></svg></div>
     </div>
-    <div class="leyenda">
-      <span><b style="background:var(--q4)"></b>bueno</span>
-      <span><b style="background:var(--q3)"></b>aceptable</span>
-      <span><b style="background:var(--q2)"></b>pobre</span>
-      <span><b style="background:var(--q1)"></b>malo</span>
-      <span><b style="background:var(--q0)"></b>sin señal</span>
-      <span class="dim">vista desde arriba · nariz arriba</span>
+    <details class="ventana" open><summary class="barra">contacto</summary><div class="cuerpo" id="filasContacto"></div></details>
+    <details class="ventana" open><summary class="barra">casco</summary><div class="cuerpo" id="datosCasco"></div></details>
+    <details class="ventana"><summary class="barra">bandas · norm <span class="extra">parpadeo <i id="parp" style="display:inline-block;width:9px;height:9px;border-radius:50%;border:1px solid var(--a-line-ctl)"></i></span></summary><div class="cuerpo" id="filasBandas"></div></details>
+  </aside>
+  <div class="div-v" data-var="--izq" data-dir="1" title="arrastra para cambiar el ancho"></div>
+
+  <section id="pCentro">
+    <div class="ventana" id="tl">
+      <div class="barra">línea de tiempo <span class="extra" id="tlNombre"></span></div>
+      <div class="cuerpo">
+        <div class="herr">
+          <button class="chico" id="bTodo" title="ver toda la sesión (0)">toda</button>
+          <button class="chico" id="bSeguir" aria-pressed="true" title="seguir en vivo (F)">seguir</button>
+          <button class="chico" id="bMenos" title="alejar (−)">−</button>
+          <button class="chico" id="bMas" title="acercar (+)">+</button>
+          <span class="rango" id="tlRango"></span>
+          <span class="dim" style="margin-left:auto">rueda: zoom · arrastrar: mover · clic en una marca: ir</span>
+        </div>
+        <div id="tlLienzo"><canvas id="tlCanvas" aria-label="Línea de tiempo de la sesión"></canvas><div id="tlTip" class="oculto"></div></div>
+        <canvas id="tlMini" aria-label="Vista general de la sesión"></canvas>
+      </div>
+    </div>
+    <div class="div-h" data-var="--abajo" data-dir="-1" title="arrastra para cambiar el alto"></div>
+    <div id="pAbajo">
+      <div class="ventana">
+        <div class="barra">ahora <span class="extra" id="hDesde"></span></div>
+        <div class="cuerpo">
+          <div class="estado-grande" id="hEstado">—</div>
+          <div class="frase" id="hFrase"></div>
+          <div id="hCal" class="aviso oculto"></div>
+          <div class="dim" style="margin-top:6px">tiempo en cada estado (sesión)</div>
+          <div class="reparto" id="hReparto"></div>
+          <div class="leyenda" id="hRepartoLey" style="justify-content:flex-start"></div>
+        </div>
+      </div>
+      <div class="ventana">
+        <div class="barra">índices <span class="extra">0.5 = línea base</span></div>
+        <div class="cuerpo" id="hIndices"></div>
+      </div>
     </div>
   </section>
 
-  <div class="columna">
-    <!-- ASISTENTE -->
-    <section class="ventana" id="vAsis" aria-label="Asistente">
-      <div class="barra">asistente <span class="extra" id="pasoN"></span></div>
+  <div class="div-v" data-var="--der" data-dir="-1" title="arrastra para cambiar el ancho"></div>
+  <aside class="columna" id="pDer">
+    <div class="ventana">
+      <div class="barra">sesión <span class="extra" id="sTiempo">—</span></div>
       <div class="cuerpo">
-        <ol class="pasos" id="listaPasos"></ol>
+        <label class="campo">nombre<input id="sNombre" placeholder="p. ej. Ensayo general 3" maxlength="80"></label>
+        <div class="acciones">
+          <button class="rec" id="bIniciar" title="guarda la actual (si hay) y empieza una nueva">● nueva sesión</button>
+          <button class="primario" id="bTerminar">■ terminar y guardar</button>
+        </div>
+        <div class="dato" style="margin-top:8px"><span>inicio</span><span id="sInicio">—</span></div>
+        <div class="dato"><span>estado</span><span id="sEstado">—</span></div>
+        <div class="dim" id="sExport" style="margin-top:6px;word-break:break-all"></div>
       </div>
-    </section>
-    <section class="ventana" id="vTarjeta" aria-live="polite">
-      <div class="barra">paso actual</div>
-      <div class="cuerpo tarjeta" id="tarjeta"></div>
-    </section>
+    </div>
+    <div class="ventana">
+      <div class="barra">marcas <span class="extra" id="mCuenta">0</span></div>
+      <div class="cuerpo">
+        <div class="con-boton"><input id="mTexto" placeholder="vacío = escena siguiente"><button id="bMarca" title="marcar (M)">marcar</button></div>
+        <ul id="listaMarcas"></ul>
+      </div>
+    </div>
+    <div class="ventana">
+      <div class="barra">calibración</div>
+      <div class="cuerpo">
+        <div class="dato"><span>línea base</span><span id="cEstado">—</span></div>
+        <div class="acciones"><button id="bRecal">recalibrar</button><span class="dim">quieto, ojos abiertos</span></div>
+      </div>
+    </div>
+    <div class="ventana">
+      <div class="barra">salida osc <span class="extra" id="oRitmo">—</span></div>
+      <div class="cuerpo"><div class="dato"><span>destinos</span><span id="oDest">—</span></div>
+        <div class="acciones"><button class="chico" id="bIrOsc">cambiar en ajustes</button></div></div>
+    </div>
+  </aside>
+</section>
 
-    <!-- AVANZADO -->
-    <section class="ventana oculto" id="vHistoria">
-      <div class="barra">historia <span class="extra" id="hTiempo">—</span></div>
+<!-- ====================== AJUSTES ====================== -->
+<section id="vAjustes" class="vista oculto" role="tabpanel" aria-label="Ajustes">
+  <div class="rejilla">
+    <div class="ventana">
+      <div class="barra">colores e índices visibles</div>
       <div class="cuerpo">
-        <div class="grande" style="margin:0 0 4px"><span class="canal" id="hEstado" style="font-size:24px">—</span><span class="nivel dim" id="hDesde"></span></div>
-        <p id="hFrase" style="font-size:15px;color:var(--a-ink-strong);min-height:22px;margin:0 0 8px"></p>
-        <div id="hCal" class="aviso oculto"></div>
-        <canvas id="hGrafica" height="96" style="width:100%;height:96px;display:block;border:1px solid var(--a-line);border-radius:var(--a-radius-sm);margin:6px 0 4px"></canvas>
-        <div class="leyenda" id="hLeyenda" style="justify-content:flex-start;padding:0 0 8px"></div>
-        <div id="hIndices"></div>
+        <div id="aColores"></div>
         <div class="acciones">
-          <span class="con-boton" style="flex:1"><input id="hMarca" placeholder="marca (p. ej. escena 2)" style="flex:1;height:var(--a-ctl-h);background:var(--a-bg);color:var(--a-ink-strong);border:1px solid var(--a-line-ctl);border-radius:var(--a-radius);padding:0 10px;font:13px var(--a-font)"><button id="bMarca" type="button">marcar</button></span>
-        </div>
-        <div class="acciones">
-          <button id="bRecal" type="button">recalibrar</button>
-          <label class="campo en-linea">contraste<input id="hContraste" type="number" min="0.2" max="4" step="0.1"></label>
-          <label class="campo en-linea">permanencia s<input id="hPerm" type="number" min="1" max="60" step="1"></label>
-          <button id="bAjustar" type="button">ajustar</button>
-        </div>
-        <div class="acciones">
-          <button class="primario" id="bTerminar" type="button">terminar y guardar</button>
-          <span id="hEstadoAccion" class="dim" style="align-self:center"></span>
+          <button class="chico" data-paleta="contraste">paleta contrastada</button>
+          <button class="chico" data-paleta="suave">paleta suave</button>
+          <button class="chico" data-paleta="alta">alto contraste</button>
         </div>
       </div>
-    </section>
-    <section class="ventana oculto" id="vOsc">
-      <div class="barra">salida OSC <span class="extra" id="oscRitmo">—</span></div>
+    </div>
+    <div class="ventana">
+      <div class="barra">interpretación</div>
+      <div class="cuerpo">
+        <label class="campo linea">calibración (s)<input id="iCal" type="number" min="5" max="600" step="5"><span class="dim">reposo para la línea base</span></label>
+        <label class="campo linea">contraste<input id="iCon" type="number" min="0.1" max="5" step="0.1"><span class="dim">&gt; 1 exagera, &lt; 1 suaviza</span></label>
+        <label class="campo linea">suavizado (s)<input id="iSua" type="number" min="0.2" max="60" step="0.5"><span class="dim">cuánto tarda en reaccionar</span></label>
+        <label class="campo linea">permanencia (s)<input id="iPer" type="number" min="1" max="120" step="1"><span class="dim">para cambiar de estado</span></label>
+        <label class="campo linea">margen<input id="iMar" type="number" min="0.01" max="0.4" step="0.01"><span class="dim">distancia mínima a la línea base</span></label>
+        <label class="campo linea">frase cada (s)<input id="iCada" type="number" min="5" max="600" step="5"><span class="dim">si el estado se sostiene</span></label>
+        <div class="acciones"><button class="primario" id="bGuardarInt">aplicar y guardar</button><button id="bRecargarFrases">recargar frases.json</button><span class="dim" id="iEstado"></span></div>
+      </div>
+    </div>
+    <div class="ventana">
+      <div class="barra">línea de tiempo y paneles</div>
+      <div class="cuerpo">
+        <label class="campo linea">en vivo mostrar<select id="uVentana">
+          <option value="0">toda la sesión</option><option value="60">último minuto</option><option value="300">últimos 5 min</option>
+          <option value="600">últimos 10 min</option><option value="1800">últimos 30 min</option></select></label>
+        <label class="campo linea"><input type="checkbox" id="uRotulos"> rótulos de las marcas en la línea de tiempo</label>
+        <div class="acciones"><button id="bPaneles">restaurar tamaño de paneles</button></div>
+        <p class="dim" style="margin:8px 0 0">Los paneles de «en vivo» se redimensionan arrastrando sus bordes; el tamaño se guarda.</p>
+      </div>
+    </div>
+    <div class="ventana">
+      <div class="barra">salida osc <span class="extra" id="oscRitmo">—</span></div>
       <div class="cuerpo">
         <div id="oscLista"></div>
         <div class="acciones">
           <button id="bOscMas" type="button">+ destino</button>
-          <label class="campo en-linea">Hz<input id="oscHz" type="number" min="1" max="120" step="1"></label>
+          <label class="campo linea" style="margin:0">Hz<input id="oscHz" type="number" min="1" max="120" step="1" style="width:64px"></label>
           <button class="primario" id="bOscAplicar" type="button">aplicar</button>
-          <span id="oscEstado" class="dim" style="align-self:center"></span>
+          <span id="oscEstado" class="dim"></span>
         </div>
-        <p class="dim" style="margin:8px 0 0">IP:puerto de cada programa que recibe. 127.0.0.1 es esta misma computadora; para otra, usa su IP en la red (p. ej. 192.168.1.20:9200).</p>
+        <p class="dim" style="margin:8px 0 0">IP:puerto de cada programa que recibe. 127.0.0.1 es esta computadora; para otra, su IP en la red (p. ej. 192.168.1.20:9200). Marcas de escena entran por el puerto 9210.</p>
       </div>
-    </section>
-    <section class="ventana oculto" id="vContacto">
-      <div class="barra">contacto por canal <span class="extra">niveles 0–4</span></div>
-      <div class="cuerpo" id="filasContacto"></div>
-    </section>
-    <section class="ventana oculto" id="vCasco">
-      <div class="barra">casco</div>
-      <div class="cuerpo" id="datosCasco"></div>
-    </section>
-    <section class="ventana oculto" id="vBandas">
-      <div class="barra">bandas · norm <span class="extra">parpadeo <i class="parpadeo" id="parp"></i></span></div>
-      <div class="cuerpo" id="filasBandas"></div>
-    </section>
-    <section class="ventana oculto" id="vConexion">
-      <div class="barra">conexión</div>
-      <div class="cuerpo" id="datosConexion"></div>
-    </section>
+    </div>
+    <div class="ventana">
+      <div class="barra">datos de la app de cortex</div>
+      <div class="cuerpo">
+        <p class="dim" style="margin:0 0 6px">Para cambiarlos (por ejemplo, si registraste una app nueva).</p>
+        <label class="campo">Client ID<input id="aCid" autocomplete="off" spellcheck="false"></label>
+        <label class="campo">Client Secret<input id="aCsec" type="password" autocomplete="off" spellcheck="false"></label>
+        <div class="acciones"><button id="bACred">guardar</button><span class="dim" id="aCredEstado"></span></div>
+      </div>
+    </div>
+    <div class="ventana">
+      <div class="barra">archivos</div>
+      <div class="cuerpo" id="aArchivos"></div>
+    </div>
   </div>
+</section>
 </main>
 <footer>Alchemy of Meaning · Héctor Cruz Juárez</footer>
 
 <script>
 const WS_PORT = "__WS_PORT__";
-const POS = {
-  // Insight
-  AF3:[-34,-80], AF4:[34,-80], T7:[-96,0], T8:[96,0], Pz:[0,62],
-  // EPOC+
-  F7:[-72,-58], F8:[72,-58], F3:[-40,-52], F4:[40,-52], FC5:[-66,-26], FC6:[66,-26],
-  P7:[-76,56], P8:[76,56], O1:[-30,94], O2:[30,94]
-};
+const $ = id => document.getElementById(id);
+const H = {"Content-Type":"application/json","X-Alquimia":"1"};
+async function post(ruta, cuerpo){ const r = await fetch(ruta,{method:"POST",headers:H,body:JSON.stringify(cuerpo)}); return r.ok; }
+
+// ---------- constantes ----------
+const POS = { AF3:[-34,-80], AF4:[34,-80], T7:[-96,0], T8:[96,0], Pz:[0,62],
+  F7:[-72,-58], F8:[72,-58], F3:[-40,-52], F4:[40,-52], FC5:[-66,-26], FC6:[66,-26], P7:[-76,56], P8:[76,56], O1:[-30,94], O2:[30,94] };
 const PISTA = {
   AF3:"Frente, lado izquierdo, arriba de la ceja. Va directo sobre la piel: aparta el fleco.",
   AF4:"Frente, lado derecho, arriba de la ceja. Va directo sobre la piel: aparta el fleco.",
@@ -242,30 +376,57 @@ const PISTA = {
   F3:"Frente izquierda, sobre el cabello: sepáralo hasta tocar piel.", F4:"Frente derecha, sobre el cabello: sepáralo hasta tocar piel.",
   FC5:"Arriba y adelante de la oreja izquierda.", FC6:"Arriba y adelante de la oreja derecha.",
   P7:"Detrás y arriba de la oreja izquierda.", P8:"Detrás y arriba de la oreja derecha.",
-  O1:"Nuca, a la izquierda del centro.", O2:"Nuca, a la derecha del centro."
-};
+  O1:"Nuca, a la izquierda del centro.", O2:"Nuca, a la derecha del centro." };
 const NIVEL = ["sin señal","malo","pobre","aceptable","bueno"];
-const COLOR = ["var(--q0)","var(--q1)","var(--q2)","var(--q3)","var(--q4)"];
+const QCOL = ["var(--q0)","var(--q1)","var(--q2)","var(--q3)","var(--q4)"];
 const TINTA = ["#d2d2d2","#fff","#111","#111","#0a0a0a"];
 const BANDAS = ["theta","alpha","betaL","betaH","gamma"];
-const $ = id => document.getElementById(id);
+const EST = ["neutral","calma","imaginacion","atencion","activacion","movimiento"];
+const IND = ["calma","imaginacion","atencion","activacion","valencia","movimiento"];
+const NOM = {neutral:"neutral",calma:"calma",imaginacion:"imaginación",atencion:"atención",activacion:"activación",valencia:"valencia",movimiento:"movimiento"};
+const PALETAS = {
+  contraste:{calma:"#3d8bff",imaginacion:"#d846ef",atencion:"#f5b301",activacion:"#ff4d2e",valencia:"#9aa0a6",movimiento:"#2fd6b5"},
+  suave:{calma:"#7fb3e6",imaginacion:"#c49be0",atencion:"#e3c77a",activacion:"#e08f7d",valencia:"#a3a3a3",movimiento:"#86d1c0"},
+  alta:{calma:"#00a2ff",imaginacion:"#ff00d4",atencion:"#ffe600",activacion:"#ff2a00",valencia:"#ffffff",movimiento:"#00ffa2"} };
+const PANELES = {izq:300, der:320, abajo:230};
 
-let S = null, conectado = false, modo = "asistente", cascoSel = null;
+// ---------- estado ----------
+let S = null, conectado = false, vista = "vivo", cascoSel = null, vistaElegida = false;
 let objetivo = null, objetivoBienDesde = 0, quietoDesde = 0, colocarListo = false, paqPrev = null;
+let UI = {colores:{...PALETAS.contraste}, visibles:["calma","imaginacion","atencion","activacion"], paneles:{...PANELES}, ventana_vivo:0, rotulos_marcas:true};
+let AJ = null;
 
 function modelo(c){ return c.n===1 ? "EPOC+" : c.n===2 ? "Insight" : (c.id||"casco"); }
 function casco(){ if(!S||!S.cascos.length) return null; return S.cascos.find(c=>c.n===cascoSel) || S.cascos[0]; }
 function nivelesListos(c){ return c && c.cq.length && c.cq.every(v=>v>=3); }
+function colorEstado(e){ return e==="neutral" ? "#4a4a4a" : (UI.colores[e] || "#888"); }
+function mmss(t){ t=Math.max(0,Math.round(t)); const h=Math.floor(t/3600), m=Math.floor(t%3600/60), s=t%60;
+  return (h? h+":"+String(m).padStart(2,"0") : m)+":"+String(s).padStart(2,"0"); }
+function esc(s){ return String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 
-// ---------- conexión con el puente ----------
+// ---------- conexión ----------
 function conectar(){
   const ws = new WebSocket(`ws://${location.hostname}:${WS_PORT}`);
-  ws.onopen = ()=>{ conectado = true; };
+  ws.onopen = ()=>{ conectado = true; cargarAjustes(); };
   ws.onmessage = e => { S = JSON.parse(e.data); pintar(); };
   ws.onclose = ()=>{ conectado = false; S = null; pintar(); setTimeout(conectar, 1500); };
 }
 
-// ---------- pasos del asistente ----------
+// ---------- vistas ----------
+function ponerVista(v){
+  vista = v;
+  [["conectar","tConectar","vConectar"],["vivo","tVivo","vVivo"],["ajustes","tAjustes","vAjustes"]].forEach(([n,t,s])=>{
+    $(t).setAttribute("aria-selected", n===v); $(s).classList.toggle("oculto", n!==v); });
+  $("tarjeta").dataset.html = "";
+  if(v==="ajustes") pintarAjustes();
+  pintar(); tl.dibujar();
+}
+$("tConectar").onclick=()=>{ vistaElegida=true; ponerVista("conectar"); };
+$("tVivo").onclick=()=>{ vistaElegida=true; ponerVista("vivo"); };
+$("tAjustes").onclick=()=>{ vistaElegida=true; ponerVista("ajustes"); };
+$("bIrOsc").onclick=()=>{ vistaElegida=true; ponerVista("ajustes"); };
+
+// ---------- asistente (conectar) ----------
 const PASOS = [
   {t:"Puente activo", ok:()=>conectado},
   {t:"Datos de tu app de Cortex", ok:()=>S && S.pasos.credenciales},
@@ -277,105 +438,57 @@ const PASOS = [
   {t:"Quietud", ok:()=>quietoDesde && performance.now()-quietoDesde>5000}
 ];
 function pasoActual(){ for(let i=0;i<PASOS.length;i++){ if(!PASOS[i].ok()) return i; } return PASOS.length; }
-
 function tarjeta(i){
   const c = casco(), epoc = c && c.n===1;
-  const msg = S && S.mensaje ? `<div class="aviso">${S.mensaje}</div>` : "";
+  const msg = S && S.mensaje ? `<div class="aviso">${esc(S.mensaje)}</div>` : "";
   switch(i){
     case 0: return `<h2>Inicia el puente</h2><p>Esta página se alimenta del puente. Abre <b>AlquimiaEEGOSC</b> (doble clic) o, desde la terminal:</p>
       <p><code>python cortex_osc.py --monitor</code></p><p class="dim">Si ya lo iniciaste, espera unos segundos: la página se reconecta sola.</p>`;
-    case 1: return `<h2>Datos de tu app de Cortex</h2>
-      <p>Se piden una sola vez y se guardan en esta computadora.</p>
-      <ol class="instr"><li>Entra a emotiv.com → <b>My Account → Cortex Apps</b>.</li>
-      <li>Copia el <b>Client ID</b> de tu app (está en la tabla).</li>
-      <li>El <b>Client Secret</b> solo se mostró al registrar la app. Si no lo guardaste, registra una app nueva.</li></ol>
-      ${msg}
+    case 1: return `<h2>Datos de tu app de Cortex</h2><p>Se piden una sola vez y se guardan en esta computadora.</p>
+      <ol><li>Entra a emotiv.com → <b>My Account → Cortex Apps</b>.</li><li>Copia el <b>Client ID</b> de tu app.</li>
+      <li>El <b>Client Secret</b> solo se mostró al registrar la app. Si no lo guardaste, registra una app nueva.</li></ol>${msg}
       <label class="campo">Client ID<input id="cid" autocomplete="off" spellcheck="false"></label>
-      <label class="campo">Client Secret<span class="con-boton"><input id="csec" type="password" autocomplete="off" spellcheck="false"><button id="bVer" type="button" aria-pressed="false">ver</button></span></label>
-      <div class="acciones"><button class="primario" id="bGuardar">guardar</button><span id="estadoCred" class="dim" style="align-self:center"></span></div>`;
-    case 2: return `<h2>Abre el EMOTIV Launcher</h2><p>Ábrelo e inicia sesión con tu cuenta de Emotiv. El puente lo está esperando y sigue solo en cuanto lo encuentra.</p>${msg}`;
+      <label class="campo">Client Secret<span class="con-boton"><input id="csec" type="password" autocomplete="off" spellcheck="false"><button id="bVer" type="button">ver</button></span></label>
+      <div class="acciones"><button class="primario" id="bGuardar">guardar</button><span id="estadoCred" class="dim"></span></div>`;
+    case 2: return `<h2>Abre el EMOTIV Launcher</h2><p>Ábrelo e inicia sesión con tu cuenta de Emotiv. El puente lo espera y sigue solo en cuanto lo encuentra.</p>${msg}`;
     case 3: return `<h2>Aprueba la app</h2><p>En el Launcher aparece una solicitud de <b>Alquimia EEG OSC</b>. Apruébala. Solo se pide la primera vez.</p>${msg}`;
-    case 4: return `<h2>Enciende y conecta el casco</h2><ul>
-      <li>Carga el casco si la batería está baja.</li>
-      <li>Enciéndelo: debe prender la luz blanca.</li>
-      <li>Activa el Bluetooth de la computadora (o conecta el USB Receiver).</li>
-      <li>El puente lo busca y lo conecta solo; no hace falta emparejarlo a mano.</li></ul>${msg}`;
-    case 5: return `<h2>Colócate el casco</h2><ul>
-      ${epoc ? "<li>Moja bien las esponjas con solución salina antes de ponerlo.</li>" : ""}
+    case 4: return `<h2>Enciende y conecta el casco</h2><ul><li>Carga el casco si la batería está baja.</li><li>Enciéndelo: debe prender la luz blanca.</li>
+      <li>Activa el Bluetooth de la computadora (o conecta el USB Receiver).</li><li>El puente lo busca y lo conecta solo.</li></ul>${msg}`;
+    case 5: return `<h2>Colócate el casco</h2><ul>${epoc ? "<li>Moja bien las esponjas con solución salina antes de ponerlo.</li>" : ""}
       <li>${epoc ? "Desliza el casco desde atrás hacia adelante." : "Desliza el casco desde atrás; la banda va en la parte alta de la nuca."}</li>
       <li>Los dos sensores de la frente van sobre piel, a dos dedos de las cejas.</li>
       <li>Ajusta primero los <b>sensores de referencia</b> (detrás de la oreja): sin ellos ningún canal da lectura.</li></ul>
       <div class="acciones"><button class="primario" id="bColocado">ya está puesto</button></div>`;
     case 6: {
       const ch = objetivo; if(!c || !ch) return `<h2>Electrodo por electrodo</h2><p class="dim">Esperando lecturas de contacto…</p>`;
-      const k = c.canales.indexOf(ch), v = c.cq[k] ?? 0;
-      const buenos = c.cq.filter(x=>x>=3).length;
-      return `<h2>Electrodo por electrodo</h2>
-        <div class="grande"><span class="canal">${ch}</span><span class="nivel" style="color:${COLOR[v]}">${NIVEL[v]}</span></div>
-        <p>${PISTA[ch]||""}</p>
-        <ul><li>Presiona suave y gira un poco el sensor, como atornillándolo.</li>
-        <li>Aparta el cabello hasta que la punta toque la piel.</li>
+      const v = c.cq[c.canales.indexOf(ch)] ?? 0, buenos = c.cq.filter(x=>x>=3).length;
+      return `<h2>Electrodo por electrodo</h2><div class="grande"><span class="canal">${ch}</span><span style="color:${QCOL[v]}">${NIVEL[v]}</span></div>
+        <p>${PISTA[ch]||""}</p><ul><li>Presiona suave y gira un poco el sensor, como atornillándolo.</li><li>Aparta el cabello hasta que la punta toque la piel.</li>
         <li>${epoc ? "Si sigue en rojo, vuelve a mojar la esponja con solución salina." : "Si sigue en rojo, humedece apenas la punta con un poco de solución salina o agua."}</li>
         <li>Si todos siguen en negro o rojo, revisa la referencia detrás de la oreja.</li></ul>
-        <p class="dim">${buenos} de ${c.cq.length} en verde o amarillo. Paso al siguiente en cuanto este llegue a aceptable.</p>
-        <div class="acciones"><button id="bSaltar">saltar este</button></div>`;
+        <p class="dim">${buenos} de ${c.cq.length} en verde o amarillo.</p><div class="acciones"><button id="bSaltar">saltar este</button></div>`;
     }
     case 7: return `<h2>Quietud</h2><p>Todos los electrodos tienen contacto. Respira y quédate quieto cinco segundos para comprobar que la señal se sostiene.</p>`;
     default: {
       const q = c ? Math.round(c.calidad*100) : 0, b = c && c.bateria!=null ? Math.round(c.bateria*100)+" %" : "—";
       return `<div class="aviso listo"><b>Conectado. Listo para escena.</b></div>
-        <div class="dato"><span>calidad global</span><span>${q} %</span></div>
-        <div class="dato"><span>batería</span><span>${b}</span></div>
-        <div class="dato"><span>enviando OSC a</span><span>${S && S.osc ? S.osc.destinos.join(", ") : "—"}</span></div>
-        <p style="margin-top:10px">En TouchDesigner o Isadora, <code>/eeg/${c?c.n:2}/valid</code> vale 1 mientras la señal es confiable. Para cambiar el destino OSC, ve al modo avanzado.</p>
-        <div class="acciones"><button class="primario" id="bIrAvan">ir al modo avanzado</button></div>`;
+        <div class="dato"><span>calidad global</span><span>${q} %</span></div><div class="dato"><span>batería</span><span>${b}</span></div>
+        <div class="acciones"><button class="primario" id="bIrVivo">ir a «en vivo»</button></div>`;
     }
   }
 }
-
 function elegirObjetivo(c){
   if(!c || !c.cq.length){ objetivo=null; return; }
   const ahora = performance.now();
   if(objetivo && c.canales.includes(objetivo)){
     const v = c.cq[c.canales.indexOf(objetivo)];
-    if(v>=3){ if(!objetivoBienDesde) objetivoBienDesde=ahora; if(ahora-objetivoBienDesde<1500) return; }
-    else { objetivoBienDesde=0; return; }
+    if(v>=3){ if(!objetivoBienDesde) objetivoBienDesde=ahora; if(ahora-objetivoBienDesde<1500) return; } else { objetivoBienDesde=0; return; }
   }
-  objetivoBienDesde = 0;
-  let peor=null, min=9;
+  objetivoBienDesde = 0; let peor=null, min=9;
   c.canales.forEach((ch,i)=>{ if(c.cq[i]<3 && c.cq[i]<min){min=c.cq[i]; peor=ch;} });
   objetivo = peor;
 }
-
-// ---------- pintar ----------
-function pintarMapa(c, resaltar){
-  const g = $("electrodos"); g.innerHTML = "";
-  if(!c) return;
-  c.canales.forEach((ch,i)=>{
-    const p = POS[ch]; if(!p) return;
-    const v = c.cq[i] ?? 0;
-    const el = document.createElementNS("http://www.w3.org/2000/svg","g");
-    el.setAttribute("class","elec"+(resaltar===ch?" objetivo":""));
-    el.innerHTML = `<circle class="anillo" cx="${p[0]}" cy="${p[1]}" r="21"/>
-      <circle class="punto" cx="${p[0]}" cy="${p[1]}" r="16" fill="${COLOR[v]}"/>
-      <text x="${p[0]}" y="${p[1]}" fill="${TINTA[v]}" font-size="${ch.length>2?10:12}">${ch}</text>`;
-    el.innerHTML += `<title>${ch}: ${NIVEL[v]}</title>`;
-    g.appendChild(el);
-  });
-}
-
-function pintarEstado(c){
-  const e = $("estado"), t = e.querySelector("span");
-  e.className = "pastilla";
-  if(!conectado){ t.textContent="sin puente"; e.classList.add("mal"); return; }
-  if(S && !S.pasos.credenciales){ t.textContent="faltan datos de la app"; e.classList.add("medio"); return; }
-  if(!c || c.edad==null || c.edad>1.5){ t.textContent = S && S.pasos.cortex ? "sin datos del casco" : "esperando Launcher"; e.classList.add("medio"); return; }
-  if(c.valido && nivelesListos(c)){ t.textContent="en vivo · conectado"; e.classList.add("vivo"); return; }
-  if(c.valido){ t.textContent="en vivo · revisa contacto"; e.classList.add("medio"); return; }
-  t.textContent="conectado · contacto bajo"; e.classList.add("medio");
-}
-
-function pintarAsistente(c){
+function pintarAsistente(){
   const i = pasoActual();
   $("listaPasos").innerHTML = PASOS.map((p,k)=>`<li class="${k<i?"hecho":k===i?"actual":""}"><span class="num">${k<i?"✓":k+1}</span>${p.t}</li>`).join("")
     + `<li class="${i>=PASOS.length?"hecho actual":""}"><span class="num">${i>=PASOS.length?"✓":"·"}</span>Listo</li>`;
@@ -387,189 +500,385 @@ function pintarAsistente(c){
     if($("cid") && prev.cid) $("cid").value = prev.cid;
     if($("csec") && prev.csec) $("csec").value = prev.csec;
     if($("estadoCred") && prev.est && !(S && S.mensaje)) $("estadoCred").textContent = prev.est;
-    enlazar();
+    const b1=$("bColocado"); if(b1) b1.onclick=()=>{colocarListo=true; pintar();};
+    const b2=$("bSaltar"); if(b2) b2.onclick=()=>{ const c=casco(); if(!c) return; const r=c.canales.filter((ch,k)=>ch!==objetivo && c.cq[k]<3); objetivo=r[0]||null; objetivoBienDesde=0; pintar(); };
+    const b3=$("bIrVivo"); if(b3) b3.onclick=()=>{ vistaElegida=true; ponerVista("vivo"); };
+    const bv=$("bVer"); if(bv) bv.onclick=()=>{ const v=$("csec").type==="password"; $("csec").type=v?"text":"password"; bv.textContent=v?"ocultar":"ver"; };
+    const bg=$("bGuardar"); if(bg) bg.onclick=async()=>{ const cid=$("cid").value.trim(), sec=$("csec").value.trim(), est=$("estadoCred");
+      if(cid.length<8||sec.length<8){ est.textContent="Pega los dos valores completos."; return; }
+      est.textContent="guardando…"; try{ est.textContent = await post("/credenciales",{client_id:cid,client_secret:sec}) ? "Guardado. Conectando…" : "No se pudo guardar."; }catch(e){ est.textContent="Sin conexión con el puente."; } };
   }
   return i;
 }
 
-function pintarAvanzado(c){
-  if(!c){ $("filasContacto").innerHTML = `<p class="dim">Sin casco todavía.</p>`; $("datosCasco").innerHTML=""; $("filasBandas").innerHTML=""; }
-  else{
-    $("filasContacto").innerHTML = c.canales.map((ch,i)=>{ const v=c.cq[i]??0;
-      return `<div class="fila"><span class="n">${ch}</span><span class="medidor"><i style="width:${v*25}%;background:${COLOR[v]}"></i></span><span class="v" style="color:${COLOR[v]}">${NIVEL[v]}</span></div>`;}).join("");
-    const pps = paqPrev ? Math.max(0,(c.paquetes-paqPrev.p)/((performance.now()-paqPrev.t)/1000)) : 0;
-    if(!paqPrev || performance.now()-paqPrev.t>1000) paqPrev = {p:c.paquetes, t:performance.now(), pps};
-    const pc = x => x==null ? "—" : Math.round(x*100)+" %";
-    $("datosCasco").innerHTML = [
-      ["modelo", `${modelo(c)} · casco ${c.n}`], ["id", c.id||"—"],
-      ["señal válida (valid)", c.valido ? "sí" : "no"], ["calidad global", pc(c.calidad)],
-      ["batería", pc(c.bateria)], ["intensidad inalámbrica", pc(c.senal)],
-      ["últimos datos", c.edad==null ? "—" : c.edad<0.2 ? "ahora" : `hace ${c.edad.toFixed(1)} s`],
-      ["paquetes por segundo", (paqPrev.pps||0).toFixed(0)]
-    ].map(([a,b])=>`<div class="dato"><span>${a}</span><span>${b}</span></div>`).join("");
-    $("filasBandas").innerHTML = BANDAS.map(b=>{ const v=c.bandas[b]; return v==null?"":
-      `<div class="fila"><span class="n">${b}</span><span class="medidor"><i style="width:${v*100}%"></i></span><span class="v">${v.toFixed(2)}</span></div>`;}).join("");
-    $("parp").classList.toggle("on", c.parpadeo!=null && c.parpadeo<0.25);
-  }
-  const p = S ? S.pasos : {};
-  const si = x => x ? "sí" : "no";
-  $("datosConexion").innerHTML = [
-    ["puente", si(conectado)], ["datos de la app", si(p.credenciales)], ["Launcher (Cortex)", si(p.cortex)],
-    ["app aprobada", p.esperando_aprobacion ? "esperando" : si(p.autorizado)],
-    ["casco", p.casco ? `${p.casco} · ${p.casco_estado||"—"}` : "—"],
-    ["flujos", p.flujos && p.flujos.length ? p.flujos.join(", ") : "—"]
-  ].map(([a,b])=>`<div class="dato"><span>${a}</span><span>${b}</span></div>`).join("")
-   + (S && S.mensaje ? `<div class="aviso">${S.mensaje}</div>` : "");
+// ---------- mapa de electrodos ----------
+const MAPA_BASE = `<path class="contorno" d="M -12 -112 L 0 -126 L 12 -112"/><ellipse class="contorno" cx="-108" cy="0" rx="8" ry="20"/>
+  <ellipse class="contorno" cx="108" cy="0" rx="8" ry="20"/><circle class="contorno" cx="0" cy="0" r="105"/>
+  <circle class="guia" cx="0" cy="0" r="70"/><line class="guia" x1="0" y1="-105" x2="0" y2="105"/><line class="guia" x1="-105" y1="0" x2="105" y2="0"/><g></g>`;
+["mapaC","mapaV"].forEach(id=>{ $(id).innerHTML = MAPA_BASE; });
+$("leyendaC").innerHTML = [4,3,2,1,0].map(v=>`<span><b style="background:${QCOL[v]}"></b>${NIVEL[v]}</span>`).join("") + `<span>vista desde arriba · nariz arriba</span>`;
+function pintarMapa(id, c, resaltar){
+  const g = $(id).querySelector("g"); g.innerHTML = "";
+  if(!c) return;
+  c.canales.forEach((ch,i)=>{ const p = POS[ch]; if(!p) return; const v = c.cq[i] ?? 0;
+    const el = document.createElementNS("http://www.w3.org/2000/svg","g");
+    el.setAttribute("class","elec"+(resaltar===ch?" objetivo":""));
+    el.innerHTML = `<circle class="anillo" cx="${p[0]}" cy="${p[1]}" r="21"/><circle class="punto" cx="${p[0]}" cy="${p[1]}" r="16" fill="${QCOL[v]}"/>
+      <text x="${p[0]}" y="${p[1]}" fill="${TINTA[v]}" font-size="${ch.length>2?10:12}">${ch}</text><title>${ch}: ${NIVEL[v]}</title>`;
+    g.appendChild(el); });
 }
 
+// ---------- encabezado ----------
+function pintarEstado(c){
+  const e = $("estado"), t = e.querySelector("span"); e.className = "pastilla";
+  if(!conectado){ t.textContent="sin puente"; e.classList.add("mal"); return; }
+  if(S && !S.pasos.credenciales){ t.textContent="faltan datos de la app"; e.classList.add("medio"); return; }
+  if(!c || c.edad==null || c.edad>1.5){ t.textContent = S && S.pasos.cortex ? "sin datos del casco" : "esperando Launcher"; e.classList.add("medio"); return; }
+  if(c.valido && nivelesListos(c)){ t.textContent="en vivo · conectado"; e.classList.add("vivo"); return; }
+  if(c.valido){ t.textContent="en vivo · revisa contacto"; e.classList.add("medio"); return; }
+  t.textContent="conectado · contacto bajo"; e.classList.add("medio");
+}
+function pintarRec(){
+  const p = $("pRec"), t = p.querySelector("span"), h = S && S.historia; p.className = "pastilla";
+  if(!h){ t.textContent = "sin sesión"; return; }
+  if(h.grabando){ p.classList.add("rec"); t.textContent = `${mmss(h.sesion_t)} · ${h.sesion_nombre}`; }
+  else t.textContent = `■ detenida · ${h.sesion_nombre}`;
+}
+
+// ---------- en vivo: paneles laterales ----------
+function pintarIzq(c){
+  $("modeloV").textContent = c ? `${modelo(c)} · ${c.canales.length} canales` : "—";
+  pintarMapa("mapaV", c, null);
+  if(!c){ $("filasContacto").innerHTML = `<p class="dim">Sin casco todavía.</p>`; $("datosCasco").innerHTML=""; $("filasBandas").innerHTML=""; return; }
+  $("filasContacto").innerHTML = c.canales.map((ch,i)=>{ const v=c.cq[i]??0;
+    return `<div class="fila" style="grid-template-columns:40px 1fr 62px"><span class="n">${ch}</span><span class="medidor"><i style="width:${v*25}%;background:${QCOL[v]}"></i></span><span class="v" style="color:${QCOL[v]}">${NIVEL[v]}</span></div>`;}).join("");
+  if(!paqPrev || performance.now()-paqPrev.t>1000){ const pps = paqPrev ? Math.max(0,(c.paquetes-paqPrev.p)/((performance.now()-paqPrev.t)/1000)) : 0; paqPrev = {p:c.paquetes, t:performance.now(), pps}; }
+  const pc = x => x==null ? "—" : Math.round(x*100)+" %";
+  $("datosCasco").innerHTML = [["id", c.id||"—"],["señal válida", c.valido?"sí":"no"],["calidad", pc(c.calidad)],["batería", pc(c.bateria)],
+    ["inalámbrica", pc(c.senal)],["últimos datos", c.edad==null?"—":c.edad<0.2?"ahora":`hace ${c.edad.toFixed(1)} s`],["paquetes/s", (paqPrev.pps||0).toFixed(0)]]
+    .map(([a,b])=>`<div class="dato"><span>${a}</span><span>${esc(b)}</span></div>`).join("");
+  $("filasBandas").innerHTML = BANDAS.map(b=>{ const v=c.bandas[b]; return v==null?"":
+    `<div class="fila" style="grid-template-columns:52px 1fr 40px"><span class="n">${b}</span><span class="medidor"><i style="width:${v*100}%"></i></span><span class="v">${v.toFixed(2)}</span></div>`;}).join("");
+  const on = c.parpadeo!=null && c.parpadeo<0.25; $("parp").style.background = on ? "var(--a-ink-strong)" : "transparent";
+}
+function pintarAhora(){
+  const h = S && S.historia;
+  if(!h){ $("hEstado").textContent="—"; $("hFrase").textContent="La historia empieza cuando llegan datos del casco."; $("hIndices").innerHTML=""; return; }
+  $("hEstado").textContent = h.nombre; $("hEstado").style.color = colorEstado(h.estado);
+  $("hDesde").textContent = `${Math.round(h.intensidad*100)} % · hace ${mmss(h.desde)}`;
+  $("hFrase").textContent = h.frase || "";
+  const cal = $("hCal");
+  if(h.calibracion!=null){ cal.classList.remove("oculto");
+    cal.textContent = h.calibracion===0 ? "Esperando señal válida para calibrar la línea base…" : `Calibrando la línea base: ${Math.round(h.calibracion*100)} %. Quieto, ojos abiertos.`; }
+  else cal.classList.add("oculto");
+  $("cEstado").textContent = h.calibracion==null ? "lista" : `calibrando ${Math.round(h.calibracion*100)} %`;
+  $("hIndices").innerHTML = IND.map(k=>{ const v=h.indices[k]??0.5, vis = UI.visibles.includes(k);
+    return `<div class="fila" style="opacity:${vis?1:.45}"><span class="n">${NOM[k]}</span><span class="medidor"><i style="width:${v*100}%;background:${UI.colores[k]}"></i></span><span class="v">${v.toFixed(2)}</span></div>`;}).join("");
+  // reparto de estados en la sesión (desde la línea de tiempo local)
+  const cnt = {}; let tot = 0;
+  for(const f of tl.filas){ if(f[3]) continue; const e = EST[f[1]]; cnt[e]=(cnt[e]||0)+1; tot++; }
+  const orden = Object.entries(cnt).sort((a,b)=>b[1]-a[1]);
+  $("hReparto").innerHTML = tot ? orden.map(([e,n])=>`<i style="width:${100*n/tot}%;background:${colorEstado(e)}" title="${NOM[e]} ${Math.round(100*n/tot)} %"></i>`).join("") : "";
+  $("hRepartoLey").innerHTML = tot ? orden.map(([e,n])=>`<span><b style="background:${colorEstado(e)}"></b>${NOM[e]} ${Math.round(100*n/tot)} %</span>`).join("") : `<span>todavía sin datos analizados</span>`;
+}
+function pintarDer(){
+  const h = S && S.historia;
+  if(h){
+    if(document.activeElement !== $("sNombre") && !$("sNombre").dataset.editado) $("sNombre").value = h.sesion_nombre;
+    $("sTiempo").textContent = mmss(h.sesion_t);
+    $("sEstado").textContent = h.grabando ? "grabando" : "detenida (no se registra)";
+    $("bTerminar").disabled = !h.grabando;
+    $("sExport").textContent = h.ultima_exportacion ? "Última guardada: " + h.ultima_exportacion.split(/[\\/]/).pop() : "";
+  }
+  $("sInicio").textContent = tl.inicio ? new Date(tl.inicio).toLocaleTimeString() : "—";
+  if(S && S.osc){ $("oRitmo").textContent = `${S.osc.por_segundo} msj/s`; $("oDest").textContent = S.osc.destinos.join(", "); }
+}
+function pintarMarcas(){
+  const m = tl.marcas; $("mCuenta").textContent = m.length;
+  const html = m.map((x,i)=>`<li data-i="${i}" class="${tl.sel===i?"sel":""}"><span>${mmss(x.t)}</span><span>${esc(x.texto)}</span></li>`).reverse().join("");
+  if($("listaMarcas").dataset.html !== html){ $("listaMarcas").innerHTML = html; $("listaMarcas").dataset.html = html;
+    $("listaMarcas").querySelectorAll("li").forEach(li=>li.onclick=()=>tl.irAMarca(+li.dataset.i)); }
+}
+
+// sesión: botones
+$("sNombre").addEventListener("input", ()=>{ $("sNombre").dataset.editado = "1"; });
+$("sNombre").addEventListener("change", async ()=>{ const n=$("sNombre").value.trim(); if(n && S && S.historia && S.historia.grabando) await post("/sesion",{accion:"nombre",nombre:n}); delete $("sNombre").dataset.editado; });
+$("bIniciar").onclick = async ()=>{
+  const n = $("sNombre").value.trim();
+  const h = S && S.historia;
+  if(h && h.grabando && h.filas > 20 && !confirmar("La sesión actual se guardará y empezará una nueva. ¿Seguir?")) return;
+  await post("/sesion",{accion:"iniciar",nombre:n}); delete $("sNombre").dataset.editado; tl.reiniciar(); };
+$("bTerminar").onclick = async ()=>{ await post("/sesion",{accion:"terminar"}); };
+function confirmar(txt){ return window.confirm(txt); }
+let nEscena = 0;
+async function marcar(){
+  let t = $("mTexto").value.trim();
+  if(!t){ const usados = tl.marcas.map(m=>{ const r = /^escena\s+(\d+)/i.exec(m.texto); return r ? +r[1] : 0; });
+    nEscena = Math.max(nEscena, 0, ...usados) + 1; t = `escena ${nEscena}`; }
+  $("mTexto").value = "";
+  await post("/sesion",{accion:"marcar",texto:t}); tl.pedir();
+}
+$("bMarca").onclick = marcar;
+$("mTexto").addEventListener("keydown", e=>{ if(e.key==="Enter") marcar(); });
+$("bRecal").onclick = ()=>post("/sesion",{accion:"recalibrar"});
+
+// ---------- línea de tiempo ----------
+const tl = {
+  filas: [], marcas: [], frases: [], total: 0, nombre: "", inicio: null, grabando: true, tFin: 0,
+  t0: 0, t1: 60, seguir: true, sel: -1, hover: null, golpes: [], arrastre: null, pidiendo: false,
+  reiniciar(){ this.filas=[]; this.marcas=[]; this.frases=[]; this.total=0; this.sel=-1; this.seguir=true; this.pedir(); },
+  async pedir(){
+    if(this.pidiendo || !conectado) return; this.pidiendo = true;
+    try{
+      const r = await fetch(`/historia?desde=${this.filas.length}`, {cache:"no-store"}); const d = await r.json();
+      if(!d.vacia){
+        if(d.inicio !== this.inicio || d.total < this.filas.length){ this.filas = []; this.inicio = d.inicio; if(d.desde>0){ this.pidiendo=false; return this.pedir(); } }
+        this.filas.push(...d.filas); this.total = d.total; this.marcas = d.marcas; this.frases = d.frases;
+        this.nombre = d.nombre; this.grabando = d.grabando; this.tFin = d.t;
+        $("tlNombre").textContent = `${d.nombre} · ${mmss(d.t)} · ${this.marcas.length} marcas`;
+      }
+    }catch(e){}
+    this.pidiendo = false; this.dibujar(); pintarMarcas(); pintarAhora();
+  },
+  fin(){ return Math.max(this.tFin, this.filas.length ? this.filas[this.filas.length-1][0] : 0, 10); },
+  vistaAuto(){ if(!this.seguir) return; const f = this.fin(), w = +UI.ventana_vivo || 0;
+    this.t1 = f + Math.max(2, (w||f)*0.02); this.t0 = w ? Math.max(0, f - w) : 0; },
+  zoom(fac, tc){ this.seguir=false; $("bSeguir").setAttribute("aria-pressed","false");
+    const span = Math.min(Math.max((this.t1-this.t0)*fac, 4), Math.max(this.fin()*1.1, 20));
+    tc = tc ?? (this.t0+this.t1)/2; const a = (tc-this.t0)/(this.t1-this.t0);
+    this.t0 = tc - a*span; this.t1 = this.t0 + span; this.limitar(); this.dibujar(); },
+  limitar(){ const span=this.t1-this.t0, f=this.fin()*1.05+2; if(this.t0 < -span*0.05){ this.t0=-span*0.05; this.t1=this.t0+span; }
+    if(this.t1 > f && span < f){ this.t1=f; this.t0=f-span; } },
+  irAMarca(i){ const m=this.marcas[i]; if(!m) return; this.sel=i; this.seguir=false; $("bSeguir").setAttribute("aria-pressed","false");
+    const span = Math.min(Math.max(this.t1-this.t0, 20), 60); this.t0 = m.t - span/2; this.t1 = m.t + span/2; this.limitar(); this.dibujar(); pintarMarcas(); },
+  idx(t){ let lo=0, hi=this.filas.length-1; if(hi<0) return -1; while(lo<hi){ const mid=(lo+hi)>>1; if(this.filas[mid][0]<t) lo=mid+1; else hi=mid; } return lo; },
+  marco(cv){ const dpr=window.devicePixelRatio||1, w=cv.clientWidth, h=cv.clientHeight;
+    if(cv.width!==Math.round(w*dpr)||cv.height!==Math.round(h*dpr)){ cv.width=Math.round(w*dpr); cv.height=Math.round(h*dpr); }
+    const g=cv.getContext("2d"); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,w,h); return [g,w,h]; },
+  pasoTiempo(span, w){ const pasos=[1,2,5,10,15,30,60,120,300,600,900,1800,3600,7200]; const obj = span/(w/90); return pasos.find(p=>p>=obj) || 7200; },
+  dibujar(){
+    if(vista!=="vivo") return;
+    this.vistaAuto();
+    const cv=$("tlCanvas"); const [g,w,h]=this.marco(cv);
+    const arriba = UI.rotulos_marcas ? 30 : 14, abajo = 30, P = {l:6, r:w-6, t:arriba, b:h-abajo};
+    this.P = P;
+    const X = t => P.l + (t-this.t0)/(this.t1-this.t0)*(P.r-P.l), Y = v => P.b - v*(P.b-P.t);
+    this.X = X;
+    // rejilla de tiempo
+    const paso = this.pasoTiempo(this.t1-this.t0, w);
+    g.font = "11px Inter, Arial"; g.textBaseline = "top";
+    for(let t=Math.ceil(this.t0/paso)*paso; t<=this.t1; t+=paso){ const x=Math.round(X(t))+.5;
+      g.strokeStyle="#1d1d1d"; g.beginPath(); g.moveTo(x,P.t); g.lineTo(x,P.b); g.stroke();
+      g.fillStyle="#7d7d7d"; g.fillText(mmss(t), x+3, P.b+15); }
+    // línea base
+    g.strokeStyle="#333"; g.setLineDash([3,5]); g.beginPath(); g.moveTo(P.l,Y(.5)); g.lineTo(P.r,Y(.5)); g.stroke(); g.setLineDash([]);
+    if(!this.filas.length){ g.fillStyle="#7d7d7d"; g.fillText("Esperando datos de la sesión…", P.l+8, P.t+8); this.dibujarMini(); return; }
+    const i0 = Math.max(0, this.idx(this.t0)-1), i1 = Math.min(this.filas.length-1, this.idx(this.t1)+1);
+    // zonas de calibración y sin señal válida
+    for(let i=i0;i<=i1;i++){ const f=this.filas[i], n=this.filas[i+1]; const x0=X(f[0]), x1=n?X(n[0]):x0+2;
+      if(f[3]){ g.fillStyle="rgba(217,130,43,.10)"; g.fillRect(x0,P.t,x1-x0+.5,P.b-P.t); }
+      else if(!f[4]){ g.fillStyle="rgba(120,120,120,.16)"; g.fillRect(x0,P.t,x1-x0+.5,P.b-P.t); }
+      g.fillStyle = colorEstado(EST[f[1]]); g.globalAlpha=.9; g.fillRect(x0, P.b+3, x1-x0+.5, 8); g.globalAlpha=1; }
+    // curvas
+    const paso_i = Math.max(1, Math.floor((i1-i0)/((P.r-P.l)*1.5)));
+    UI.visibles.forEach(k=>{ const j = 5 + IND.indexOf(k); if(j<5) return;
+      g.strokeStyle = UI.colores[k]; g.lineWidth = 1.6; g.beginPath();
+      for(let i=i0, pri=true; i<=i1; i+=paso_i){ const f=this.filas[i]; const x=X(f[0]), y=Y(f[j]); pri? g.moveTo(x,y) : g.lineTo(x,y); pri=false; }
+      g.stroke(); });
+    g.lineWidth = 1;
+    // frases: puntos sobre la franja
+    for(const fr of this.frases){ if(fr.t<this.t0||fr.t>this.t1) continue; g.fillStyle=colorEstado(fr.estado); g.beginPath(); g.arc(X(fr.t), P.b+7, 3.2, 0, 6.3); g.fill(); g.strokeStyle="#000"; g.stroke(); }
+    // fin de sesión
+    if(!this.grabando){ const x=X(this.tFin); g.strokeStyle="#e5484d"; g.setLineDash([2,3]); g.beginPath(); g.moveTo(x,P.t-4); g.lineTo(x,P.b+12); g.stroke(); g.setLineDash([]);
+      g.fillStyle="#e5484d"; g.fillText("fin", x+3, P.t-2); }
+    // marcas
+    this.golpes = []; let filaRot = [ -1e9, -1e9 ];
+    this.marcas.forEach((m,i)=>{ if(m.t<this.t0||m.t>this.t1) return; const x=Math.round(X(m.t))+.5;
+      g.strokeStyle = i===this.sel ? "#fff" : "#f2d06b"; g.lineWidth = i===this.sel ? 2 : 1;
+      g.beginPath(); g.moveTo(x,P.t-2); g.lineTo(x,P.b+12); g.stroke(); g.lineWidth=1;
+      g.fillStyle = g.strokeStyle; g.beginPath(); g.moveTo(x,P.t-2); g.lineTo(x+7,P.t+2); g.lineTo(x,P.t+6); g.fill();
+      let caja = {x:x-4, y:P.t-6, w:14, h:14, i};
+      if(UI.rotulos_marcas){ const txt = m.texto.length>28 ? m.texto.slice(0,27)+"…" : m.texto; const tw = g.measureText(txt).width+8;
+        const fila = x >= filaRot[0] ? 0 : (x >= filaRot[1] ? 1 : 0); filaRot[fila] = x + tw + 4; const y = 2 + fila*13;
+        g.fillStyle = i===this.sel ? "#3a3420" : "rgba(30,26,12,.92)"; g.fillRect(x+2, y, tw, 12);
+        g.fillStyle = i===this.sel ? "#fff" : "#f2d06b"; g.fillText(txt, x+6, y+1); caja = {x:x-4, y:0, w:tw+8, h:P.t+6, i}; }
+      this.golpes.push(caja); });
+    // cursor
+    if(this.hover!=null){ const x = Math.round(X(this.hover))+.5; g.strokeStyle="rgba(255,255,255,.45)"; g.beginPath(); g.moveTo(x,P.t); g.lineTo(x,P.b+12); g.stroke(); }
+    $("tlRango").textContent = `${mmss(Math.max(0,this.t0))} – ${mmss(this.t1)} · ${mmss(this.t1-this.t0)} visibles`;
+    this.dibujarMini();
+  },
+  dibujarMini(){
+    const cv=$("tlMini"); const [g,w,h]=this.marco(cv); const f=this.fin(); if(!this.filas.length) return;
+    const X = t => 4 + t/f*(w-8);
+    const paso_i = Math.max(1, Math.floor(this.filas.length/(w*1.2)));
+    for(let i=0;i<this.filas.length;i+=paso_i){ const r=this.filas[i]; g.fillStyle=colorEstado(EST[r[1]]); g.globalAlpha=.55; g.fillRect(X(r[0]), h-7, Math.max(1,(w-8)/this.filas.length*paso_i+1), 6); }
+    g.globalAlpha=1;
+    UI.visibles.forEach(k=>{ const j=5+IND.indexOf(k); g.strokeStyle=UI.colores[k]; g.globalAlpha=.7; g.beginPath();
+      for(let i=0,pri=true;i<this.filas.length;i+=paso_i){ const r=this.filas[i]; const x=X(r[0]), y=2+(1-r[j])*(h-12); pri?g.moveTo(x,y):g.lineTo(x,y); pri=false; } g.stroke(); });
+    g.globalAlpha=1;
+    this.marcas.forEach(m=>{ g.fillStyle="#f2d06b"; g.fillRect(Math.round(X(m.t)), 0, 1, h); });
+    const a=X(Math.max(0,this.t0)), b=X(Math.min(f,this.t1)); g.strokeStyle="#fff"; g.lineWidth=1; g.strokeRect(a+.5, .5, Math.max(3,b-a), h-1);
+    g.fillStyle="rgba(255,255,255,.06)"; g.fillRect(a, 0, Math.max(3,b-a), h);
+  },
+  tip(t, px, py){
+    const tip=$("tlTip"); if(t==null || !this.filas.length){ tip.classList.add("oculto"); return; }
+    const i = Math.min(this.filas.length-1, this.idx(t)); const f = this.filas[i]; if(!f){ tip.classList.add("oculto"); return; }
+    let fr = null; for(const x of this.frases){ if(x.t<=t) fr=x; else break; }
+    const span = this.t1-this.t0, cerca = this.marcas.filter(m=>Math.abs(m.t-t) < Math.max(2, span*0.02));
+    const est = EST[f[1]];
+    tip.innerHTML = `<div class="t">${mmss(f[0])} · <span style="color:${colorEstado(est)}">${NOM[est]}</span> ${Math.round(f[2]*100)} %</div>`
+      + (f[3] ? `<div class="dim">calibrando línea base</div>` : !f[4] ? `<div class="dim">señal no válida</div>` : "")
+      + IND.map(k=>`<div class="r" style="opacity:${UI.visibles.includes(k)?1:.5}"><b style="background:${UI.colores[k]}"></b><span>${NOM[k]}</span><span>${f[5+IND.indexOf(k)].toFixed(2)}</span></div>`).join("")
+      + (fr ? `<div class="fr">“${esc(fr.frase)}” <span class="dim">(${mmss(fr.t)})</span></div>` : "")
+      + cerca.map(m=>`<div class="mk">▸ ${mmss(m.t)} ${esc(m.texto)}</div>`).join("");
+    tip.classList.remove("oculto");
+    const L = $("tlLienzo"), lw = L.clientWidth, tw = tip.offsetWidth, th = tip.offsetHeight;
+    tip.style.left = (px + 14 + tw > lw ? px - tw - 14 : px + 14) + "px";
+    tip.style.top = Math.max(4, Math.min(py - th/2, L.clientHeight - th - 4)) + "px";
+  }
+};
+(function(){ // interacción con la línea de tiempo
+  const cv = $("tlCanvas");
+  const tDe = ev => { const r=cv.getBoundingClientRect(), x=ev.clientX-r.left; return tl.t0 + (x-tl.P.l)/(tl.P.r-tl.P.l)*(tl.t1-tl.t0); };
+  cv.addEventListener("wheel", ev=>{ ev.preventDefault(); tl.zoom(ev.deltaY>0 ? 1.25 : 0.8, tDe(ev)); tl.hover = tDe(ev); }, {passive:false});
+  cv.addEventListener("pointerdown", ev=>{ const r=cv.getBoundingClientRect(), x=ev.clientX-r.left, y=ev.clientY-r.top;
+    const g = tl.golpes.find(b=>x>=b.x && x<=b.x+b.w && y>=b.y && y<=b.y+b.h); if(g){ tl.irAMarca(g.i); return; }
+    tl.arrastre = {x:ev.clientX, t0:tl.t0, t1:tl.t1, movio:false}; cv.setPointerCapture(ev.pointerId); });
+  cv.addEventListener("pointermove", ev=>{ const r=cv.getBoundingClientRect();
+    if(tl.arrastre){ const dx = ev.clientX - tl.arrastre.x; if(Math.abs(dx)>2){ tl.arrastre.movio=true; tl.seguir=false; $("bSeguir").setAttribute("aria-pressed","false"); }
+      const dt = dx/(tl.P.r-tl.P.l)*(tl.arrastre.t1-tl.arrastre.t0); tl.t0 = tl.arrastre.t0 - dt; tl.t1 = tl.arrastre.t1 - dt; tl.limitar(); }
+    tl.hover = tDe(ev); tl.dibujar(); tl.tip(tl.hover, ev.clientX-r.left, ev.clientY-r.top); });
+  cv.addEventListener("pointerup", ()=>{ tl.arrastre = null; });
+  cv.addEventListener("pointerleave", ()=>{ tl.hover=null; tl.tip(null); tl.dibujar(); });
+  cv.addEventListener("dblclick", ()=>verToda());
+  const mini = $("tlMini");
+  const irMini = ev=>{ const r=mini.getBoundingClientRect(); const t = (ev.clientX-r.left-4)/(r.width-8)*tl.fin(); const span=tl.t1-tl.t0;
+    tl.seguir=false; $("bSeguir").setAttribute("aria-pressed","false"); tl.t0=t-span/2; tl.t1=t+span/2; tl.limitar(); tl.dibujar(); };
+  mini.addEventListener("pointerdown", ev=>{ mini.setPointerCapture(ev.pointerId); irMini(ev); mini.onpointermove = irMini; });
+  mini.addEventListener("pointerup", ()=>{ mini.onpointermove = null; });
+})();
+function verToda(){ tl.seguir=false; $("bSeguir").setAttribute("aria-pressed","false"); tl.t0=0; tl.t1=tl.fin()*1.02+1; tl.dibujar(); }
+$("bTodo").onclick = verToda;
+$("bSeguir").onclick = ()=>{ tl.seguir = !tl.seguir; $("bSeguir").setAttribute("aria-pressed", tl.seguir); tl.sel=-1; tl.dibujar(); pintarMarcas(); };
+$("bMas").onclick = ()=>tl.zoom(0.7); $("bMenos").onclick = ()=>tl.zoom(1.4);
+setInterval(()=>tl.pedir(), 1000);
+new ResizeObserver(()=>tl.dibujar()).observe($("tlLienzo"));
+
+// ---------- paneles redimensionables ----------
+function aplicarPaneles(){ const p = UI.paneles; const r = document.documentElement.style;
+  r.setProperty("--izq", p.izq+"px"); r.setProperty("--der", p.der+"px"); r.setProperty("--abajo", p.abajo+"px"); }
+let guardarUITimer = null, uiPendiente = false;
+function guardarUI(){ uiPendiente = true; clearTimeout(guardarUITimer);
+  guardarUITimer = setTimeout(async()=>{ try{ await post("/ajustes",{ui:UI}); }catch(e){} uiPendiente = false; }, 400); }
+document.querySelectorAll(".div-v,.div-h").forEach(d=>{
+  d.addEventListener("pointerdown", ev=>{
+    const clave = d.dataset.var.slice(2), horiz = d.classList.contains("div-v"), dir = +d.dataset.dir;
+    const ini = UI.paneles[clave], x0 = horiz ? ev.clientX : ev.clientY; d.classList.add("arrastrando"); d.setPointerCapture(ev.pointerId);
+    const lim = clave==="abajo" ? [120, window.innerHeight-260] : [180, Math.max(220, window.innerWidth*0.42)];
+    d.onpointermove = e=>{ const dx = ((horiz ? e.clientX : e.clientY) - x0) * dir;
+      UI.paneles[clave] = Math.round(Math.min(lim[1], Math.max(lim[0], ini + dx))); aplicarPaneles(); tl.dibujar(); };
+    d.onpointerup = ()=>{ d.onpointermove = null; d.classList.remove("arrastrando"); guardarUI(); };
+  });
+  d.addEventListener("dblclick", ()=>{ const k=d.dataset.var.slice(2); UI.paneles[k]=PANELES[k]; aplicarPaneles(); tl.dibujar(); guardarUI(); });
+});
+
+// ---------- ajustes ----------
+async function cargarAjustes(){
+  try{ const r = await fetch("/ajustes",{cache:"no-store"}); AJ = await r.json();
+    if(!uiPendiente) UI = {...UI, ...AJ.ui, colores:{...UI.colores, ...(AJ.ui.colores||{})}, paneles:{...PANELES, ...(AJ.ui.paneles||{})}};
+    aplicarPaneles(); pintarAjustes(); tl.dibujar(); pintarAhora(); }catch(e){}
+}
+function pintarAjustes(){
+  if(vista!=="ajustes" || !AJ) return;
+  $("aColores").innerHTML = IND.map(k=>`<div class="color-fila"><b style="width:12px;height:12px;border-radius:50%;background:${UI.colores[k]}"></b>
+      <span>${NOM[k]}</span><input type="color" data-k="${k}" value="${UI.colores[k]}"><label class="campo linea" style="margin:0"><input type="checkbox" data-v="${k}" ${UI.visibles.includes(k)?"checked":""}> ver</label></div>`).join("");
+  $("aColores").querySelectorAll("input[type=color]").forEach(i=>i.oninput=()=>{ UI.colores[i.dataset.k]=i.value; i.parentElement.querySelector("b").style.background=i.value; guardarUI(); });
+  $("aColores").querySelectorAll("input[type=checkbox]").forEach(i=>i.onchange=()=>{ const k=i.dataset.v;
+    UI.visibles = i.checked ? [...new Set([...UI.visibles,k])] : UI.visibles.filter(x=>x!==k); UI.visibles.sort((a,b)=>IND.indexOf(a)-IND.indexOf(b)); guardarUI(); });
+  const c = AJ.interpretacion || {};
+  [["iCal","calibracion"],["iCon","contraste"],["iSua","suavizado"],["iPer","permanencia"],["iMar","margen"],["iCada","cada"]].forEach(([id,k])=>{ if(document.activeElement!==$(id) && c[k]!=null) $(id).value = c[k]; });
+  $("uVentana").value = String(UI.ventana_vivo||0); $("uRotulos").checked = !!UI.rotulos_marcas;
+  if(!oscEditado){ $("oscLista").innerHTML=""; (AJ.osc.destinos||[]).forEach(filaDestino); $("oscHz").value = AJ.osc.hz; }
+  $("aArchivos").innerHTML = [["sesiones guardadas en", AJ.carpeta_sesiones],["configuración", AJ.config],["frases", AJ.frases]]
+    .map(([a,b])=>`<div class="dato" style="grid-template-columns:150px 1fr"><span>${a}</span><span title="${esc(b)}" style="word-break:break-all;white-space:normal">${esc(b)}</span></div>`).join("");
+}
+document.querySelectorAll("[data-paleta]").forEach(b=>b.onclick=()=>{ UI.colores = {...PALETAS[b.dataset.paleta]}; pintarAjustes(); guardarUI(); });
+$("uVentana").onchange=()=>{ UI.ventana_vivo = +$("uVentana").value; tl.seguir=true; guardarUI(); };
+$("uRotulos").onchange=()=>{ UI.rotulos_marcas = $("uRotulos").checked; guardarUI(); tl.dibujar(); };
+$("bPaneles").onclick=()=>{ UI.paneles={...PANELES}; aplicarPaneles(); guardarUI(); };
+$("bGuardarInt").onclick=async()=>{
+  const v = {calibracion:+$("iCal").value, contraste:+$("iCon").value, suavizado:+$("iSua").value, permanencia:+$("iPer").value, margen:+$("iMar").value, cada:+$("iCada").value};
+  $("iEstado").textContent = await post("/ajustes",{interpretacion:v}) ? "Aplicado y guardado." : "Revisa los valores (fuera de rango).";
+  cargarAjustes(); };
+$("bRecargarFrases").onclick=async()=>{ $("iEstado").textContent = await post("/sesion",{accion:"recargar_frases"}) ? "Frases recargadas." : "No se pudo."; };
+$("bACred").onclick=async()=>{ const cid=$("aCid").value.trim(), sec=$("aCsec").value.trim();
+  if(cid.length<8||sec.length<8){ $("aCredEstado").textContent="Pega los dos valores completos."; return; }
+  $("aCredEstado").textContent = await post("/credenciales",{client_id:cid,client_secret:sec}) ? "Guardado. Se usará al volver a conectar." : "No se pudo guardar.";
+  $("aCsec").value=""; };
+// salida osc
+let oscEditado = false;
+function filaDestino(v){ const d=document.createElement("div"); d.className="dest";
+  d.innerHTML=`<input value="${esc(v||"")}" placeholder="127.0.0.1:9200" spellcheck="false" aria-label="destino OSC"><button type="button" title="quitar">×</button>`;
+  d.querySelector("input").oninput=()=>{ oscEditado=true; }; d.querySelector("button").onclick=()=>{ d.remove(); oscEditado=true; }; $("oscLista").appendChild(d); }
+const reDestino = /^([A-Za-z0-9.\-]+:)?\d{1,5}$/;
+$("bOscMas").onclick=()=>{ filaDestino(""); oscEditado=true; };
+$("oscHz").oninput=()=>{ oscEditado=true; };
+$("bOscAplicar").onclick=async()=>{ const ins=[...$("oscLista").querySelectorAll("input")]; let ok=true;
+  const lista=ins.map(i=>{ const v=i.value.trim(); const bien=reDestino.test(v) && +v.split(":").pop()<=65535; i.classList.toggle("mal",!bien); if(!bien) ok=false; return v; });
+  const hz=+$("oscHz").value;
+  if(!ok||!lista.length||!(hz>=1&&hz<=120)){ $("oscEstado").textContent="Revisa los destinos (IP:puerto) y los Hz (1–120)."; return; }
+  $("oscEstado").textContent = await post("/osc",{destinos:lista,hz}) ? "Aplicado y guardado." : "No se pudo aplicar.";
+  oscEditado=false; cargarAjustes(); };
+
+// ---------- pintar todo ----------
 function pintarSelector(){
   const sel = $("selCasco");
   if(!S || S.cascos.length<2){ sel.classList.add("oculto"); return; }
   sel.classList.remove("oculto");
   const html = S.cascos.map(c=>`<button data-n="${c.n}" aria-pressed="${c.n===(cascoSel??S.cascos[0].n)}">${modelo(c)}</button>`).join("");
-  if(sel.dataset.html!==html){ sel.innerHTML=html; sel.dataset.html=html;
-    sel.querySelectorAll("button").forEach(b=>b.onclick=()=>{cascoSel=+b.dataset.n; objetivo=null; pintar();}); }
+  if(sel.dataset.html!==html){ sel.innerHTML=html; sel.dataset.html=html; sel.querySelectorAll("button").forEach(b=>b.onclick=()=>{cascoSel=+b.dataset.n; objetivo=null; pintar();}); }
 }
-
+let listoVisto = false;
 function pintar(){
   const c = casco();
   $("sim").classList.toggle("oculto", !(S && S.modo==="simulacion"));
-  $("modelo").textContent = c ? `${modelo(c)} · ${c.canales.length} canales` : "—";
   if(nivelesListos(c) && c.valido){ if(!quietoDesde) quietoDesde = performance.now(); } else quietoDesde = 0;
-  pintarEstado(c); pintarSelector();
-  let resaltar = null;
-  if(modo==="asistente"){
-    if(pasoActual()===6){ elegirObjetivo(c); resaltar = objetivo; }
-    pintarAsistente(c);
-  } else { pintarAvanzado(c); pintarOsc(); pintarHistoria(); }
-  pintarMapa(c, resaltar);
-}
-
-function enlazar(){
-  const b1=$("bColocado"); if(b1) b1.onclick=()=>{colocarListo=true; pintar();};
-  const b2=$("bSaltar"); if(b2) b2.onclick=()=>{ const c=casco(); if(!c) return;
-    const resto=c.canales.filter((ch,i)=>ch!==objetivo && c.cq[i]<3); objetivo=resto[0]||null; objetivoBienDesde=0; pintar(); };
-  const b3=$("bIrAvan"); if(b3) b3.onclick=()=>ponerModo("avanzado");
-  const bv=$("bVer"); if(bv) bv.onclick=()=>{ const v=$("csec").type==="password"; $("csec").type=v?"text":"password"; bv.setAttribute("aria-pressed",v); bv.textContent=v?"ocultar":"ver"; };
-  const bg=$("bGuardar"); if(bg) bg.onclick=guardarCred;
-}
-
-async function guardarCred(){
-  const cid=$("cid").value.trim(), sec=$("csec").value.trim(), est=$("estadoCred");
-  if(cid.length<8 || sec.length<8){ est.textContent="Faltan datos: pega los dos valores completos."; return; }
-  est.textContent="guardando…";
-  try{
-    const r = await fetch("/credenciales",{method:"POST",headers:{"Content-Type":"application/json","X-Alquimia":"1"},body:JSON.stringify({client_id:cid,client_secret:sec})});
-    est.textContent = r.ok ? "Guardado. Conectando…" : "No se pudo guardar. Revisa los datos.";
-  }catch(e){ est.textContent="No hay conexión con el puente."; }
-}
-
-// ---------- historia ----------
-const EST = ["neutral","calma","imaginacion","atencion","activacion","movimiento"];
-const EST_NOM = {neutral:"neutral",calma:"calma",imaginacion:"imaginación",atencion:"atención",activacion:"activación",movimiento:"movimiento"};
-const EST_COL = {neutral:"#555",calma:"#46c4e2",imaginacion:"#c4de46",atencion:"#e8dc50",activacion:"#bee8ff",movimiento:"#d9822b"};
-const IND = ["calma","imaginacion","atencion","activacion","valencia","movimiento"];
-let hAjEditado = false;
-function mmss(t){ t=Math.max(0,Math.round(t)); return Math.floor(t/60)+":"+String(t%60).padStart(2,"0"); }
-function pintarHistoria(){
-  const h = S && S.historia;
-  if(!h){ $("hEstado").textContent="—"; $("hFrase").textContent="La historia empieza cuando llegan datos del casco."; return; }
-  $("hTiempo").textContent = `sesión ${mmss(h.sesion_t)} · ${h.marcas} marcas`;
-  $("hEstado").textContent = h.nombre; $("hEstado").style.color = EST_COL[h.estado]||"";
-  $("hDesde").textContent = `${Math.round(h.intensidad*100)} % · hace ${mmss(h.desde)}`;
-  $("hFrase").textContent = h.frase || "";
-  const cal = $("hCal");
-  if(h.calibracion!=null){ cal.classList.remove("oculto");
-    cal.textContent = h.calibracion===0 ? "Esperando señal válida para calibrar la línea base…" : `Calibrando la línea base: ${Math.round(h.calibracion*100)} %. Quieto, ojos abiertos, respirando normal.`; }
-  else cal.classList.add("oculto");
-  $("hIndices").innerHTML = IND.map(k=>{ const v=h.indices[k]??0.5;
-    return `<div class="fila" style="grid-template-columns:92px 1fr 44px"><span class="n">${EST_NOM[k]||k}</span><span class="medidor"><i style="width:${v*100}%;background:${EST_COL[k]||"var(--a-ink)"}"></i></span><span class="v">${v.toFixed(2)}</span></div>`;}).join("");
-  if(!hAjEditado && document.activeElement!==$("hContraste") && document.activeElement!==$("hPerm")){
-    $("hContraste").value = h.cfg.contraste; $("hPerm").value = h.cfg.permanencia; }
-  if(h.ultima_exportacion && !$("hEstadoAccion").dataset.fijo) $("hEstadoAccion").textContent = "Última sesión: " + h.ultima_exportacion.split(/[\\/]/).pop();
-  $("hLeyenda").innerHTML = ["calma","imaginacion","atencion","activacion"].map(k=>`<span><b style="background:${EST_COL[k]}"></b>${EST_NOM[k]}</span>`).join("") + `<span class="dim">franja: estado · líneas: índices</span>`;
-  graficaHistoria(h.historial||[]);
-}
-function graficaHistoria(H){
-  const cv=$("hGrafica"), dpr=window.devicePixelRatio||1, w=cv.clientWidth, hh=96;
-  if(cv.width!==w*dpr){ cv.width=w*dpr; cv.height=hh*dpr; }
-  const g=cv.getContext("2d"); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,w,hh);
-  if(H.length<2) return;
-  const n=H.length, x=i=>i*(w-1)/(n-1);
-  // franja de estado (abajo)
-  for(let i=0;i<n;i++){ g.fillStyle=EST_COL[EST[H[i][1]]]||"#555"; g.globalAlpha=.85; g.fillRect(x(i),hh-8,Math.max(1,w/n+.5),8); }
-  g.globalAlpha=1;
-  // línea de 0.5 (línea base)
-  g.strokeStyle="#2e2e2e"; g.setLineDash([3,4]); g.beginPath(); g.moveTo(0,(hh-12)/2+2); g.lineTo(w,(hh-12)/2+2); g.stroke(); g.setLineDash([]);
-  ["calma","imaginacion","atencion","activacion"].forEach((k)=>{ const j=2+IND.indexOf(k);
-    g.strokeStyle=EST_COL[k]; g.lineWidth=1.2; g.beginPath();
-    for(let i=0;i<n;i++){ const y=2+(1-H[i][j])*(hh-14); i?g.lineTo(x(i),y):g.moveTo(x(i),y); } g.stroke(); });
-}
-async function accionSesion(cuerpo, msg){
-  try{ const r=await fetch("/sesion",{method:"POST",headers:{"Content-Type":"application/json","X-Alquimia":"1"},body:JSON.stringify(cuerpo)});
-    $("hEstadoAccion").textContent = r.ok ? msg : "No se pudo."; $("hEstadoAccion").dataset.fijo = "1";
-    setTimeout(()=>{ delete $("hEstadoAccion").dataset.fijo; }, 4000);
-  }catch(e){ $("hEstadoAccion").textContent="No hay conexión con el puente."; }
-}
-$("bMarca").onclick=()=>{ const t=$("hMarca").value.trim(); accionSesion({accion:"marcar",texto:t}, "Marca guardada."); $("hMarca").value=""; };
-$("hMarca").addEventListener("keydown",e=>{ if(e.key==="Enter") $("bMarca").click(); });
-$("bRecal").onclick=()=>accionSesion({accion:"recalibrar"}, "Recalibrando línea base.");
-$("hContraste").oninput=$("hPerm").oninput=()=>{ hAjEditado=true; };
-$("bAjustar").onclick=()=>{ accionSesion({accion:"ajustar",contraste:+$("hContraste").value,permanencia:+$("hPerm").value},"Ajustado."); hAjEditado=false; };
-$("bTerminar").onclick=()=>accionSesion({accion:"terminar"}, "Sesión guardada en la carpeta «sesiones».");
-
-let oscEditado = false;
-function filaDestino(v){
-  const d = document.createElement("div"); d.className="dest";
-  d.innerHTML = `<input value="${v||""}" placeholder="127.0.0.1:9200" spellcheck="false" aria-label="destino OSC"><button type="button" title="quitar">×</button>`;
-  d.querySelector("input").oninput = ()=>{ oscEditado = true; };
-  d.querySelector("button").onclick = ()=>{ d.remove(); oscEditado = true; };
-  $("oscLista").appendChild(d);
-}
-const reDestino = /^([A-Za-z0-9.\-]+:)?\d{1,5}$/;
-function pintarOsc(){
-  if(!S || !S.osc) { $("oscRitmo").textContent = "—"; return; }
-  $("oscRitmo").textContent = `${S.osc.por_segundo} mensajes/s`;
-  if(!oscEditado){
-    const actual = [...$("oscLista").querySelectorAll("input")].map(i=>i.value).join(",");
-    if(actual !== S.osc.destinos.join(",")){ $("oscLista").innerHTML=""; S.osc.destinos.forEach(filaDestino); }
-    if(document.activeElement !== $("oscHz")) $("oscHz").value = S.osc.hz;
+  pintarEstado(c); pintarRec(); pintarSelector();
+  const paso = pasoActual();
+  // vista automática: «conectar» mientras falte algo; al quedar listo, pasa a «en vivo» (una vez)
+  if(!vistaElegida){
+    if(paso < PASOS.length && vista!=="conectar") ponerVista("conectar");
+    else if(paso >= PASOS.length && !listoVisto){ listoVisto = true; setTimeout(()=>{ if(!vistaElegida) ponerVista("vivo"); }, 1500); }
+  }
+  if(vista==="conectar"){
+    $("modeloC").textContent = c ? `${modelo(c)} · ${c.canales.length} canales` : "—";
+    let resaltar = null; if(paso===6){ elegirObjetivo(c); resaltar = objetivo; }
+    pintarAsistente(); pintarMapa("mapaC", c, resaltar);
+  } else if(vista==="vivo"){
+    pintarIzq(c); pintarDer(); if(!tl.arrastre) pintarAhora();
+  } else if(vista==="ajustes"){
+    if(S && S.osc) $("oscRitmo").textContent = `${S.osc.por_segundo} mensajes/s`;
   }
 }
-$("bOscMas").onclick = ()=>{ filaDestino(""); oscEditado = true; };
-$("oscHz").oninput = ()=>{ oscEditado = true; };
-$("bOscAplicar").onclick = async ()=>{
-  const ins = [...$("oscLista").querySelectorAll("input")];
-  let ok = true;
-  const lista = ins.map(i=>{ const v=i.value.trim(); const bien = reDestino.test(v) && +v.split(":").pop()<=65535; i.classList.toggle("mal", !bien); if(!bien) ok=false; return v; });
-  const hz = +$("oscHz").value;
-  if(!ok || !lista.length || !(hz>=1 && hz<=120)){ $("oscEstado").textContent = "Revisa los destinos (IP:puerto) y los Hz (1–120)."; return; }
-  try{
-    const r = await fetch("/osc",{method:"POST",headers:{"Content-Type":"application/json","X-Alquimia":"1"},body:JSON.stringify({destinos:lista,hz})});
-    $("oscEstado").textContent = r.ok ? "Aplicado y guardado." : "No se pudo aplicar.";
-    if(r.ok) oscEditado = false;
-  }catch(e){ $("oscEstado").textContent = "No hay conexión con el puente."; }
-};
-
-function ponerModo(m){
-  modo = m;
-  $("bAsis").setAttribute("aria-pressed", m==="asistente");
-  $("bAvan").setAttribute("aria-pressed", m==="avanzado");
-  ["vAsis","vTarjeta"].forEach(id=>$(id).classList.toggle("oculto", m!=="asistente"));
-  ["vHistoria","vOsc","vContacto","vCasco","vBandas","vConexion"].forEach(id=>$(id).classList.toggle("oculto", m!=="avanzado"));
-  $("tarjeta").dataset.html=""; pintar();
-}
-$("bAsis").onclick=()=>ponerModo("asistente");
-$("bAvan").onclick=()=>ponerModo("avanzado");
 document.addEventListener("keydown", e=>{
-  if(e.target.tagName==="INPUT") return;
-  if(e.key==="m" && modo==="avanzado"){ e.preventDefault(); $("hMarca").focus(); }
-  if(e.key==="1") ponerModo("asistente");
-  if(e.key==="2") ponerModo("avanzado");
+  if(["INPUT","SELECT","TEXTAREA"].includes(e.target.tagName)) return;
+  if(e.key==="1"){ vistaElegida=true; ponerVista("conectar"); }
+  else if(e.key==="2"){ vistaElegida=true; ponerVista("vivo"); }
+  else if(e.key==="3"){ vistaElegida=true; ponerVista("ajustes"); }
+  else if(vista==="vivo"){
+    if(e.key==="m"||e.key==="M"){ e.preventDefault(); $("mTexto").focus(); }
+    else if(e.key==="+"||e.key==="="){ tl.zoom(0.7); }
+    else if(e.key==="-"){ tl.zoom(1.4); }
+    else if(e.key==="0"){ verToda(); }
+    else if(e.key==="f"||e.key==="F"){ $("bSeguir").click(); }
+  }
 });
 const q = new URLSearchParams(location.search);
-if(q.get("modo")==="avanzado") ponerModo("avanzado"); else pintar();
+if(q.get("vista")){ vistaElegida = true; ponerVista(q.get("vista")); } else ponerVista("vivo");
+aplicarPaneles();
 conectar();
+setInterval(()=>{ if(vista==="vivo" && tl.seguir) tl.dibujar(); }, 250);
 </script>
 </body>
 </html>

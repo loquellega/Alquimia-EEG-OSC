@@ -1,8 +1,8 @@
 # Alquimia EEG OSC
 
-**v0.5** · Puente entre cascos EEG Emotiv (Insight, EPOC+) y OSC para teatro, danza y música, con monitor de contacto.
+**v0.6** · Puente entre cascos EEG Emotiv (Insight, EPOC+) y OSC para teatro, danza y música, con dashboard de sesiones.
 
-![Monitor de contacto, asistente](docs/capturas/03-asistente-electrodos.png)
+![Dashboard en vivo](docs/capturas/12-puntero.png)
 
 *[English below](#english)*
 
@@ -67,24 +67,39 @@ Para cambiarlos, borra ese archivo y vuelve a abrir el programa.
 - En TouchDesigner o Isadora, `/eeg/2/valid` vale **1** (o `/eeg/1/valid` con el EPOC+).
 - En la terminal aparece «En vivo. Enviando OSC…».
 
-## Monitor de contacto
+## Dashboard
 
-| Modo | Para qué |
-|---|---|
-| **asistente** (tecla 1) | guía paso a paso: Launcher → aprobar la app → encender el casco → colocarlo → electrodo por electrodo (marca con un anillo el que falta y da pistas de dónde va) → quietud → listo |
-| **avanzado** (tecla 2) | **salida OSC** (destinos y Hz), contacto por canal, batería, intensidad inalámbrica, calidad global, paquetes por segundo, bandas, parpadeo y estado de la conexión |
+Se abre con `--monitor` (el ejecutable lo abre siempre) en `http://localhost:9201`. Tiene tres vistas (teclas 1, 2, 3):
 
-### Salida OSC
-En el modo avanzado, la ventana **salida OSC** muestra a dónde se envía y cuántos mensajes por segundo salen. Puedes:
-- cambiar el destino o agregar varios (**+ destino**), con formato `IP:puerto`. `127.0.0.1` es la misma computadora; para otra máquina usa su IP en la red, por ejemplo `192.168.1.20:9200`;
-- cambiar la tasa (Hz);
-- pulsar **aplicar**: el cambio es inmediato y se guarda para la próxima vez.
+### Conectar
+El asistente paso a paso: datos de la app de Cortex → Launcher → aprobar la app → encender el casco → colocarlo → electrodo por electrodo (con el que falta marcado y pistas de dónde va) → quietud → listo. Se abre solo mientras falta algo y, en cuanto todo está listo, pasa a «en vivo».
 
-Lo que pongas con `--destino` o `--hz` en la terminal manda sobre lo guardado.
+Colores de contacto: **verde** bueno · **amarillo** aceptable · **naranja** pobre · **rojo** malo · **gris** sin señal. Desde amarillo ya cuenta como conectado.
 
-Colores: **verde** bueno · **amarillo** aceptable · **naranja** pobre · **rojo** malo · **gris** sin señal. Desde amarillo ya cuenta como conectado.
+### En vivo
+- **Paneles redimensionables:** arrastra los bordes entre columnas y entre la línea de tiempo y la parte de abajo (doble clic en un borde lo restaura). El tamaño se guarda.
+- **Izquierda:** electrodos en pequeño, contacto por canal, datos del casco y bandas.
+- **Línea de tiempo** de toda la sesión:
+  - curvas de los índices con sus colores, franja de estados abajo, puntos de cada frase, zona de calibración y tramos sin señal válida;
+  - **marcas de escena** como banderas con su texto; clic en una para ir a ella;
+  - **rueda** = zoom, **arrastrar** = mover, doble clic o **toda** = ver todo, **seguir** = acompañar en vivo;
+  - al pasar el **puntero**: minuto, estado, todos los índices, la frase vigente y la marca cercana;
+  - **minimapa** debajo con la sesión completa y el tramo visible.
+- **Abajo:** el estado actual con su frase, el tiempo en cada estado durante la sesión y los índices.
+- **Derecha:**
+  - **sesión** con nombre, *● nueva sesión* (guarda la actual y empieza otra) y *■ terminar y guardar*;
+  - **marcas** (tecla **M**; vacío = «escena siguiente», numerada sola) y lista clicable;
+  - calibración y salida OSC.
 
-El monitor se abre en `http://localhost:9201` y usa también el puerto 9202. Con dos cascos aparece un selector arriba.
+Atajos: **M** marcar · **+ / −** zoom · **0** toda la sesión · **F** seguir en vivo.
+
+### Ajustes
+- **Colores** de cada índice (calma, imaginación, atención, activación, valencia, movimiento), cuáles se ven y tres paletas (contrastada, suave, alto contraste).
+- **Interpretación:** calibración, contraste, suavizado, permanencia, margen y cada cuánto repetir frase.
+- **Línea de tiempo:** ventana en vivo (toda la sesión o los últimos 1, 5, 10 o 30 min) y rótulos de marcas.
+- **Salida OSC**, **datos de la app de Cortex** y dónde están los archivos (sesiones, configuración, frases).
+
+Todo se guarda en la configuración y se conserva al volver a abrir.
 
 ## Uso diario
 
@@ -178,12 +193,12 @@ Se instala igual que el visor (Text DAT → Run Script). Escucha en el puerto **
 
 | | | |
 |---|---|---|
-| ![Asistente](docs/capturas/03-asistente-electrodos.png) | ![Listo](docs/capturas/04-asistente-listo.png) | ![Avanzado](docs/capturas/05-avanzado.png) |
-| Asistente: electrodo por electrodo · *Wizard: electrode by electrode* | Asistente: conectado · *Wizard: connected* | Modo avanzado · *Advanced mode* |
-| ![Datos de la app](docs/capturas/07-datos-de-la-app.png) | ![Celular](docs/capturas/06-movil.png) | ![Conexión](docs/capturas/01-conexion-cortex.png) |
-| Asistente: datos de la app · *Wizard: Cortex app details* | Monitor en celular · *Monitor on a phone* | Conexión con Cortex · *Connecting to Cortex* |
-| ![OSC](docs/capturas/02-mensajes-osc.png) | ![Historia](docs/capturas/09-historia.png) | ![Constelación](docs/capturas/10-constelacion-touchdesigner.png) |
-| Mensajes OSC (simulación) · *OSC messages (simulation)* | Historia: estado, frase y sesión · *Story: state, phrase and session* | Constelación en TouchDesigner · *Constellation in TouchDesigner* |
+| ![En vivo](docs/capturas/11-en-vivo.png) | ![Puntero](docs/capturas/12-puntero.png) | ![Ajustes](docs/capturas/13-ajustes.png) |
+| En vivo: línea de tiempo con marcas · *Live: timeline with scene marks* | Puntero: qué pasó en ese momento · *Hover: what happened at that moment* | Ajustes: colores, interpretación, OSC · *Settings* |
+| ![Sesión terminada](docs/capturas/14-sesion-terminada.png) | ![Conectar](docs/capturas/03-asistente-electrodos.png) | ![Constelación](docs/capturas/10-constelacion-touchdesigner.png) |
+| Sesión terminada y guardada · *Session ended and saved* | Conectar: asistente paso a paso · *Connect: step-by-step wizard* | Constelación en TouchDesigner · *Constellation in TouchDesigner* |
+| ![Visor TD](docs/capturas/08-visor-touchdesigner.png) | ![Conexión](docs/capturas/01-conexion-cortex.png) | ![OSC](docs/capturas/02-mensajes-osc.png) |
+| Visor de bandas en TouchDesigner · *Band viewer in TouchDesigner* | Conexión con Cortex · *Connecting to Cortex* | Mensajes OSC · *OSC messages* |
 
 ---
 
@@ -192,7 +207,7 @@ Se instala igual que el visor (Text DAT → Run Script). Escucha en el puerto **
 
 **Alquimia EEG OSC** bridges Emotiv EEG headsets (Insight, EPOC+) to OSC for theatre, dance and music. It reads Cortex (EMOTIV Launcher) streams (band power, blinks and facial expressions, performance metrics, head motion and contact quality), smooths and normalises them to 0–1, and sends them over OSC to TouchDesigner, Isadora or any OSC client.
 
-It includes a **contact monitor** in the browser: a top view of the head with each electrode coloured by contact quality, a step-by-step **wizard** to fit the headset, and an **advanced** view with all readings.
+It includes a browser **dashboard**: a step-by-step **connect** wizard with a top view of the head and per-electrode contact colours; a **live** view with resizable panels and a zoomable session **timeline** (scene marks, hover details, minimap, explicit session start and end); and **settings** for index colours, interpretation, OSC output and Cortex credentials.
 
 **Install:** download `AlquimiaEEGOSC-windows.exe` or `AlquimiaEEGOSC-mac.zip` from [Releases](https://github.com/loquellega/alquimia-eeg-osc/releases) and install the EMOTIV Launcher. Register a Cortex app (emotiv.com → My Account → Cortex Apps) and paste its Client ID and Secret into the monitor the first time. From source: Python 3.10+, `pip install -r requirements.txt`.
 
