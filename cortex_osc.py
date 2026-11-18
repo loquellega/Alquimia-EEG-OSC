@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Alquimia EEG OSC v0.6 — vía A (Cortex)
+Alquimia EEG OSC v0.7 — vía A (Cortex)
 Puente entre los cascos Emotiv (Insight, EPOC+) y OSC para escena.
 
 Lee los flujos de Cortex (bandas, expresiones, métricas, movimiento, contacto),
@@ -83,7 +83,36 @@ AJUSTES_UI = {   # lo que el dashboard guarda y lee
     "visibles": ["calma", "imaginacion", "atencion", "activacion"],
     "paneles": {"izq": 300, "der": 320, "abajo": 230},
     "ventana_vivo": 0, "rotulos_marcas": True, "electrodos": "compacto",
+    "etiquetas": ["risa", "silencio", "música", "cambio de luz", "entra personaje", "sale personaje",
+                  "texto clave", "tensión", "sorpresa", "aplauso", "oscuro", "movimiento del público"],
 }
+
+
+def lista_sesiones():
+    """Sesiones guardadas (los .json de la carpeta), de la más nueva a la más vieja."""
+    out = []
+    carpeta = carpeta_sesiones()
+    if not carpeta.exists():
+        return out
+    for f in sorted(carpeta.glob("*.json"), reverse=True):
+        try:
+            d = json.loads(f.read_text(encoding="utf-8"))
+            r = d.get("resumen", {})
+            out.append({"id": f.stem, "nombre": r.get("nombre") or f.stem, "inicio": r.get("inicio", ""),
+                        "duracion": r.get("total_s") or r.get("duracion_s", 0), "analizado": r.get("duracion_s", 0),
+                        "marcas": len(r.get("marcas", [])), "porcentaje": r.get("porcentaje", {}),
+                        "tamano": f.stat().st_size})
+        except (OSError, ValueError):
+            continue
+    return out
+
+
+def archivo_sesion(ident, ext):
+    """Ruta segura de un archivo de sesión (solo nombres simples dentro de la carpeta)."""
+    if not ident or not all(c.isalnum() or c in "-_." for c in ident) or ".." in ident:
+        return None
+    f = carpeta_sesiones() / f"{ident}.{ext}"
+    return f if f.exists() else None
 
 
 def ajustes_ui():
@@ -740,6 +769,25 @@ class Monitor:
                     except ValueError:
                         desde = 0
                     return self_._json(it.historia_desde(desde))
+                if u.path == "/sesiones":
+                    return self_._json({"carpeta": str(carpeta_sesiones()), "sesiones": lista_sesiones()})
+                if u.path in ("/sesiones/archivo", "/sesiones/csv", "/sesiones/txt"):
+                    ext = {"/sesiones/archivo": "json", "/sesiones/csv": "csv", "/sesiones/txt": "txt"}[u.path]
+                    f = archivo_sesion((q.get("id") or [""])[0], ext)
+                    if f is None:
+                        self_.send_error(404)
+                        return
+                    cuerpo = f.read_bytes()
+                    tipo = {"json": "application/json", "csv": "text/csv", "txt": "text/plain"}[ext]
+                    self_.send_response(200)
+                    self_.send_header("Content-Type", f"{tipo}; charset=utf-8")
+                    self_.send_header("Cache-Control", "no-store")
+                    if ext != "json":
+                        self_.send_header("Content-Disposition", f'attachment; filename="{f.name}"')
+                    self_.send_header("Content-Length", str(len(cuerpo)))
+                    self_.end_headers()
+                    self_.wfile.write(cuerpo)
+                    return
                 if u.path == "/ajustes":
                     ints = monitor.estado.get("interpretes") or {}
                     cfg = next(iter(ints.values())).cfg if ints else (leer_config().get("interpretacion") or {})
@@ -1121,7 +1169,7 @@ def main():
     if CONGELADO:
         os.chdir(carpeta_programa())  # las grabaciones quedan junto al .exe
     if not args.reproducir:
-        log("Alquimia EEG OSC v0.6 · Ctrl+C o cerrar esta ventana para salir.")
+        log("Alquimia EEG OSC v0.7 · Ctrl+C o cerrar esta ventana para salir.")
     try:
         asyncio.run(principal(args))
     except KeyboardInterrupt:

@@ -1,6 +1,6 @@
 # Alquimia EEG OSC
 
-**v0.6** · Puente entre cascos EEG Emotiv (Insight, EPOC+) y OSC para teatro, danza y música, con dashboard de sesiones.
+**v0.7** · Puente entre cascos EEG Emotiv (Insight, EPOC+) y OSC para teatro, danza y música, con dashboard de sesiones.
 
 ![Dashboard en vivo](docs/capturas/12-puntero.png)
 
@@ -69,7 +69,7 @@ Para cambiarlos, borra ese archivo y vuelve a abrir el programa.
 
 ## Dashboard
 
-Se abre con `--monitor` (el ejecutable lo abre siempre) en `http://localhost:9201`. Tiene tres vistas (teclas 1, 2, 3):
+Se abre con `--monitor` (el ejecutable lo abre siempre) en `http://localhost:9201`. Tiene cuatro vistas (teclas 1 a 4):
 
 ### Conectar
 El asistente paso a paso: datos de la app de Cortex → Launcher → aprobar la app → encender el casco → colocarlo → electrodo por electrodo (con el que falta marcado y pistas de dónde va) → quietud → listo. Se abre solo mientras falta algo y, en cuanto todo está listo, pasa a «en vivo».
@@ -88,10 +88,20 @@ Colores de contacto: **verde** bueno · **amarillo** aceptable · **naranja** po
 - **Abajo:** el estado actual con su frase, el tiempo en cada estado durante la sesión y los índices.
 - **Derecha:**
   - **sesión** con nombre, *● nueva sesión* (guarda la actual y empieza otra) y *■ terminar y guardar*;
-  - **marcas** (tecla **M**; vacío = «escena siguiente», numerada sola) y lista clicable;
+  - **nube de etiquetas:** toca una etiqueta («risa», «silencio», «cambio de luz»…) y queda marcado ese instante, sin escribir; cada una muestra cuántas veces se usó en la sesión. **Shift + 1…9** dispara las nueve primeras. Escribe un texto y pulsa **+ etiqueta** para crear una nueva (se guarda para las siguientes sesiones); **editar** permite quitarlas;
+  - **marcas** de texto libre (tecla **M**; vacío = «escena siguiente», numerada sola) y lista clicable;
   - calibración y salida OSC.
 
-Atajos: **M** marcar · **+ / −** zoom · **0** toda la sesión · **F** seguir en vivo.
+Atajos: **M** marcar · **Shift + 1…9** etiquetas · **+ / −** zoom · **0** toda la sesión · **F** seguir en vivo.
+
+### Sesiones
+Todas las sesiones guardadas, con buscador. Al abrir una:
+- la misma **línea de tiempo** (zoom, arrastre, puntero, marcas clicables, minimapa);
+- **resumen:** duración, tiempo analizado, marcas, frases, parpadeos, tiempo en cada estado y los **picos** de cada índice (clic para ir);
+- **nube de etiquetas** de esa sesión: el tamaño es la frecuencia y el color, el estado en que más ocurrió; clic para recorrer sus apariciones;
+- **fragmentos y marcas** en orden, clicables;
+- el **relato**;
+- **exportar:** **SVG** (curvas, franja de estados, frases, marcas con su texto y escala de tiempo; con fondo oscuro o claro, de toda la sesión o del tramo visible), **PNG**, **CSV**, **JSON** y el relato en texto.
 
 ### Ajustes
 - **Colores** de cada índice (calma, imaginación, atención, activación, valencia, movimiento), cuáles se ven y tres paletas (contrastada, suave, alto contraste).
@@ -195,6 +205,8 @@ Se instala igual que el visor (Text DAT → Run Script). Escucha en el puerto **
 |---|---|---|
 | ![En vivo](docs/capturas/11-en-vivo.png) | ![Puntero](docs/capturas/12-puntero.png) | ![Ajustes](docs/capturas/13-ajustes.png) |
 | En vivo: línea de tiempo con marcas · *Live: timeline with scene marks* | Puntero: qué pasó en ese momento · *Hover: what happened at that moment* | Ajustes: colores, interpretación, OSC · *Settings* |
+| ![Etiquetas](docs/capturas/15-etiquetas-en-vivo.png) | ![Sesiones](docs/capturas/16-sesiones.png) | ![SVG exportado](docs/capturas/17-svg-exportado.png) |
+| Nube de etiquetas en vivo · *Live tag cloud* | Sesiones: resumen, nube, fragmentos · *Sessions: summary, tag cloud, fragments* | SVG exportado (fondo claro) · *Exported SVG (light)* |
 | ![Sesión terminada](docs/capturas/14-sesion-terminada.png) | ![Conectar](docs/capturas/03-asistente-electrodos.png) | ![Constelación](docs/capturas/10-constelacion-touchdesigner.png) |
 | Sesión terminada y guardada · *Session ended and saved* | Conectar: asistente paso a paso · *Connect: step-by-step wizard* | Constelación en TouchDesigner · *Constellation in TouchDesigner* |
 | ![Visor TD](docs/capturas/08-visor-touchdesigner.png) | ![Conexión](docs/capturas/01-conexion-cortex.png) | ![OSC](docs/capturas/02-mensajes-osc.png) |
@@ -207,7 +219,7 @@ Se instala igual que el visor (Text DAT → Run Script). Escucha en el puerto **
 
 **Alquimia EEG OSC** bridges Emotiv EEG headsets (Insight, EPOC+) to OSC for theatre, dance and music. It reads Cortex (EMOTIV Launcher) streams (band power, blinks and facial expressions, performance metrics, head motion and contact quality), smooths and normalises them to 0–1, and sends them over OSC to TouchDesigner, Isadora or any OSC client.
 
-It includes a browser **dashboard**: a step-by-step **connect** wizard with a top view of the head and per-electrode contact colours; a **live** view with resizable panels and a zoomable session **timeline** (scene marks, hover details, minimap, explicit session start and end); and **settings** for index colours, interpretation, OSC output and Cortex credentials.
+It includes a browser **dashboard**: a step-by-step **connect** wizard with a top view of the head and per-electrode contact colours; a **live** view with resizable panels, a zoomable session **timeline** (scene marks, hover details, minimap, explicit session start and end) and a one-tap **tag cloud** to mark what just happened; a **sessions** view to reopen saved sessions with summary, tag cloud, fragments, story and **SVG/PNG/CSV/JSON export**; and **settings** for index colours, interpretation, OSC output and Cortex credentials.
 
 **Install:** download `AlquimiaEEGOSC-windows.exe` or `AlquimiaEEGOSC-mac.zip` from [Releases](https://github.com/loquellega/alquimia-eeg-osc/releases) and install the EMOTIV Launcher. Register a Cortex app (emotiv.com → My Account → Cortex Apps) and paste its Client ID and Secret into the monitor the first time. From source: Python 3.10+, `pip install -r requirements.txt`.
 
