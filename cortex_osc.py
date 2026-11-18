@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Alquimia EEG OSC v0.4 — vía A (Cortex)
+Alquimia EEG OSC v0.5 — vía A (Cortex)
 Puente entre los cascos Emotiv (Insight, EPOC+) y OSC para escena.
 
 Lee los flujos de Cortex (bandas, expresiones, métricas, movimiento, contacto),
@@ -28,6 +28,8 @@ from datetime import datetime
 from pathlib import Path
 
 from pythonosc.udp_client import SimpleUDPClient
+
+import interpretacion as interp
 
 try:
     from dotenv import load_dotenv
@@ -64,6 +66,11 @@ def carpeta_programa() -> Path:
 def carpeta_recursos() -> Path:
     """Carpeta con monitor.html (dentro del .exe, PyInstaller la extrae a _MEIPASS)."""
     return Path(getattr(sys, "_MEIPASS", Path(__file__).parent))
+
+
+def archivo_frases() -> Path:
+    propio = carpeta_programa() / "frases.json"
+    return propio if propio.exists() else carpeta_recursos() / "frases.json"
 
 
 def archivo_config() -> Path:
@@ -404,10 +411,24 @@ class Salida:
             self.archivo.close()
 
 
+def interprete_de(estado, n):
+    """Un intérprete (índices, estado, frases, sesión) por casco, creado al primer dato."""
+    ints = estado.setdefault("interpretes", {})
+    if n not in ints:
+        a = estado.get("args")
+        narr = estado.get("narrador") or interp.Narrador(archivo_frases())
+        estado["narrador"] = narr
+        it = interp.Interprete(narr, calibracion=getattr(a, "calibracion", 60), contraste=getattr(a, "contraste", 1.0),
+                               permanencia=getattr(a, "permanencia", 8))
+        ints[n] = it
+    return ints[n]
+
+
 async def bucle_salida(cascos, out, hz, estado):
     estado.setdefault("hz", hz)
     t0 = time.monotonic()
     seq = 0
+    t_interp = 0.0
     while True:
         hz = max(1, min(120, int(estado["hz"])))
         periodo = 1.0 / hz
@@ -415,8 +436,17 @@ async def bucle_salida(cascos, out, hz, estado):
         out.send("/eeg/frame", [seq, float(ahora - t0), len(cascos)])
         if seq % hz == 0:
             out.send("/eeg/system/status", [estado["status"]])
+        con_interp = not getattr(estado.get("args"), "sin_interpretacion", False)
+        actualizar = ahora - t_interp >= 0.25
+        if actualizar:
+            t_interp = ahora
         for c in list(cascos.values()):
             c.emitir(out, ahora)
+            if con_interp:
+                it = interprete_de(estado, c.n)
+                if actualizar:
+                    it.actualizar(c, ahora)
+                it.emitir(out, c.n, ahora)
         out.cerrar_cuadro(ahora - t0)
         seq += 1
         await asyncio.sleep(max(0.0, periodo - (time.monotonic() - ahora)))
@@ -670,13 +700,17 @@ class Monitor:
             def do_POST(self_):
                 # El encabezado propio obliga al navegador a pedir permiso (CORS) a otras páginas,
                 # así que solo el monitor puede escribir aquí.
-                if self_.path not in ("/credenciales", "/osc") or self_.headers.get("X-Alquimia") != "1":
+                if self_.path not in ("/credenciales", "/osc", "/sesion") or self_.headers.get("X-Alquimia") != "1":
                     self_.send_error(403)
                     return
                 try:
                     n = int(self_.headers.get("Content-Length", "0"))
                     d = json.loads(self_.rfile.read(min(n, 4096)) or b"{}")
-                    if self_.path == "/credenciales":
+                    if self_.path == "/sesion":
+                        ok_ = sesion_accion(monitor.estado, str(d.get("accion", "")), d)
+                        if not ok_:
+                            raise ValueError
+                    elif self_.path == "/credenciales":
                         cid, sec = str(d.get("client_id", "")).strip(), str(d.get("client_secret", "")).strip()
                         if len(cid) < 8 or len(sec) < 8:
                             raise ValueError
@@ -731,7 +765,15 @@ class Monitor:
                 r = (self.out.enviados - n0) / (ahora - t0)
                 self._env = (self.out.enviados, ahora, r)
             osc = {"destinos": self.out.destinos, "hz": self.estado.get("hz", 30), "por_segundo": round(r)}
+        historia = None
+        ints = self.estado.get("interpretes") or {}
+        if ints:
+            n = sorted(ints)[0]
+            historia = ints[n].resumen_vivo(ahora)
+            historia["n"] = n
+            historia["ultima_exportacion"] = self.estado.get("ultima_exportacion", "")
         return {
+            "historia": historia,
             "osc": osc,
             "modo": self.modo, "status": self.estado["status"],
             "mensaje": self.estado.get("mensaje", ""), "pasos": self.estado["pasos"],
@@ -748,6 +790,77 @@ class Monitor:
                     except Exception:
                         self.clientes.discard(ws)
             await asyncio.sleep(0.1)
+
+
+def sesion_accion(estado, accion, d=None):
+    """Acciones de sesión desde el monitor o por OSC."""
+    d = d or {}
+    ints = estado.get("interpretes") or {}
+    if accion == "marcar":
+        texto = str(d.get("texto") or "").strip()[:120]
+        for it in ints.values():
+            it.sesion.marcar(texto or f"marca {len(it.sesion.marcas) + 1}")
+        log("Marca:", texto or "(sin texto)")
+    elif accion == "terminar":
+        exportar_sesiones(estado, reiniciar=True)
+    elif accion == "reiniciar":
+        for it in ints.values():
+            it.sesion.reiniciar()
+        log("Sesión reiniciada.")
+    elif accion == "recalibrar":
+        for it in ints.values():
+            it.recalibrar()
+        log("Recalibrando línea base.")
+    elif accion == "ajustar":
+        for it in ints.values():
+            it.ajustar(contraste=d.get("contraste"), suavizado=d.get("suavizado"),
+                       permanencia=d.get("permanencia"), margen=d.get("margen"), cada=d.get("cada"))
+    elif accion == "recargar_frases":
+        narr = estado.get("narrador")
+        if narr:
+            narr.cargar()
+            log("Frases recargadas de", narr.archivo)
+    else:
+        return False
+    return True
+
+
+def exportar_sesiones(estado, reiniciar=False):
+    hechos = []
+    for n, it in (estado.get("interpretes") or {}).items():
+        base = it.sesion.exportar(it.narrador, etiqueta=f"sesion_casco{n}")
+        if base:
+            hechos.append(str(base))
+            log("Sesión guardada:", base.with_suffix(".txt"), "(.json, .csv)")
+        if reiniciar:
+            it.sesion.reiniciar()
+    if hechos:
+        estado["ultima_exportacion"] = hechos[-1]
+    return hechos
+
+
+async def entrada_osc(estado, puerto):
+    """Escucha marcas y órdenes de sesión (Isadora, QLab, TouchDesigner…)."""
+    from pythonosc.dispatcher import Dispatcher
+    from pythonosc.osc_server import AsyncIOOSCUDPServer
+    disp = Dispatcher()
+
+    def orden(accion, con_texto=False):
+        def h(_addr, *x):
+            # sin valor de retorno: python-osc lo mandaría de vuelta como respuesta
+            sesion_accion(estado, accion, {"texto": " ".join(str(v) for v in x)} if con_texto else {})
+        return h
+
+    disp.map("/eeg/marca", orden("marcar", True))
+    for accion in ("terminar", "reiniciar", "recalibrar"):
+        disp.map(f"/eeg/sesion/{accion}", orden(accion))
+    disp.map("/eeg/frases/recargar", orden("recargar_frases"))
+    try:
+        srv = AsyncIOOSCUDPServer(("0.0.0.0", puerto), disp, asyncio.get_running_loop())
+        await srv.create_serve_endpoint()
+        log(f"Escuchando marcas OSC en el puerto {puerto} (/eeg/marca, /eeg/sesion/terminar…)")
+    except OSError as e:
+        log(f"No pude abrir el puerto de entrada OSC {puerto}: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -779,7 +892,10 @@ async def modo_simular(args, out, cascos, estado):
         t = time.monotonic() - t0
         ahora = time.monotonic()
         lento = 0.5 + 0.5 * math.sin(t / 8.0)
-        c.recibir("pow", [(2 + 6 * lento) * (1 + 0.2 * math.sin(t * 3 + i)) for i in range(25)], ahora)
+        # cada banda pesa distinto con el tiempo: así cambian las proporciones y aparecen «estados»
+        peso = [1 + 0.8 * math.sin(t / 9.0 + fase) for fase in (0.0, 1.7, 3.1, 4.4, 5.6)]
+        c.recibir("pow", [(2 + 6 * lento) * peso[i % 5] * (1 + 0.15 * math.sin(t * 3 + i)) + random.random() * 0.3
+                          for i in range(25)], ahora)
         if k % 4 == 0:
             niveles = [int(clip((t - llegada[ch]) * 0.6 + 1, 0, 4)) if t > llegada[ch] - 3 else 0
                        for ch in canales]
@@ -833,7 +949,7 @@ async def principal(args):
             await modo_reproducir(args, out)
             return
         cascos = {}
-        estado = {"status": 0, "mensaje": "",
+        estado = {"status": 0, "mensaje": "", "args": args,
                   "pasos": {"credenciales": False, "cortex": False, "esperando_aprobacion": False, "autorizado": False,
                             "casco": "", "casco_estado": "", "flujos": []}}
         if args.monitor:
@@ -841,6 +957,8 @@ async def principal(args):
             mon = Monitor(cascos, estado, args.monitor_puerto, "simulacion" if args.simular else "cortex", out)
             await mon.iniciar(abrir=not args.no_abrir)
         tarea = asyncio.create_task(bucle_salida(cascos, out, args.hz, estado))
+        if args.osc_entrada:
+            await entrada_osc(estado, args.osc_entrada)
         try:
             if args.simular:
                 await modo_simular(args, out, cascos, estado)
@@ -848,6 +966,7 @@ async def principal(args):
                 await modo_cortex(args, out, cascos, estado)
         finally:
             tarea.cancel()
+            exportar_sesiones(estado)
     finally:
         out.cerrar()
 
@@ -870,6 +989,11 @@ def main():
     ap.add_argument("--simular", action="store_true", help="datos sintéticos, sin casco")
     ap.add_argument("--reproducir", metavar="ARCHIVO", help="reproducir una grabación .jsonl")
     ap.add_argument("--bucle", action="store_true", help="con --reproducir: repetir sin fin")
+    ap.add_argument("--calibracion", type=float, default=60, help="segundos de línea base en reposo (60)")
+    ap.add_argument("--contraste", type=float, default=1.0, help="exagera (>1) o suaviza (<1) los índices")
+    ap.add_argument("--permanencia", type=float, default=8, help="segundos que un estado debe sostenerse para cambiar (8)")
+    ap.add_argument("--osc-entrada", type=int, default=9210, help="puerto para recibir marcas de escena (9210; 0 = no)")
+    ap.add_argument("--sin-interpretacion", action="store_true", help="no calcular índices, estados ni frases")
     ap.add_argument("--debito", type=int, default=10,
                     help="sesiones que se piden a Cortex al autorizar (debit). 10 por defecto")
     ap.add_argument("--url", default=CORTEX_URL, help=argparse.SUPPRESS)
@@ -883,7 +1007,7 @@ def main():
     if CONGELADO:
         os.chdir(carpeta_programa())  # las grabaciones quedan junto al .exe
     if not args.reproducir:
-        log("Alquimia EEG OSC v0.4 · Ctrl+C o cerrar esta ventana para salir.")
+        log("Alquimia EEG OSC v0.5 · Ctrl+C o cerrar esta ventana para salir.")
     try:
         asyncio.run(principal(args))
     except KeyboardInterrupt:

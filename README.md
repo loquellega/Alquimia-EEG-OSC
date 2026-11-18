@@ -1,6 +1,6 @@
 # Alquimia EEG OSC
 
-**v0.4** · Puente entre cascos EEG Emotiv (Insight, EPOC+) y OSC para teatro, danza y música, con monitor de contacto.
+**v0.5** · Puente entre cascos EEG Emotiv (Insight, EPOC+) y OSC para teatro, danza y música, con monitor de contacto.
 
 ![Monitor de contacto, asistente](docs/capturas/03-asistente-electrodos.png)
 
@@ -108,6 +108,34 @@ Ejemplo, en función: `python cortex_osc.py --monitor --grabar --destino 127.0.0
 
 **Nota:** con Cortex sin licencia de pago, los cascos de consumo (Insight) entregan todos los flujos, incluido el EEG crudo; los profesionales (EPOC) todo excepto el EEG crudo y las métricas de alta resolución. El EEG no lee emociones: da estimaciones de estado. Úsalas como textura escénica, no como verdad.
 
+## Interpretación, frases y sesión
+
+Además de las bandas, el puente calcula unos pocos **índices** (0–1, donde 0.5 es la línea base de la persona) y un **estado** que solo cambia si se sostiene unos segundos:
+
+| Índice | De dónde sale |
+|---|---|
+| `calma` | alfa relativa (más alfa que de costumbre) |
+| `imaginacion` | theta frente a beta (mente que divaga) |
+| `atencion` | índice de compromiso β/(α+θ) |
+| `activacion` | beta alta y gamma frente a las bandas lentas |
+| `valencia` | asimetría frontal alfa AF4–AF3 (acercamiento o retiro) |
+| `movimiento` | velocidad del giro de la cabeza |
+
+Son **interpretaciones**, no lectura de la mente: relaciones conocidas entre bandas, comparadas con la misma persona en reposo. Los electrodos con mal contacto se dejan fuera del cálculo.
+
+- **Calibración:** los primeros 60 s con señal válida (quieto, ojos abiertos) son la línea base. Se puede repetir con *recalibrar*.
+- **Exagerar o suavizar:** `contraste` (más de 1 exagera) y `permanencia` (segundos para cambiar de estado), en el monitor o con `--contraste` y `--permanencia`.
+- **Frases:** `frases.json` es la librería que va eligiendo el narrador según el estado, su intensidad y las transiciones. Edítala con tu voz y déjala junto al ejecutable.
+- **Sesión y marcas de escena:** cada segundo se registra todo. Las marcas llegan por OSC al puerto **9210** (`/eeg/marca "escena 2"`, desde Isadora, QLab o TouchDesigner) o desde el monitor. Al terminar (botón *terminar y guardar*, `/eeg/sesion/terminar` o al cerrar el puente) se guarda en `sesiones/` un `.json`, un `.csv` y un `.txt` con el relato:
+
+```
+0:32–0:49  atención (69%)  · La escena te sostiene.
+  ▸ 0:41  marca: escena 1: entrada
+0:49–1:12  calma (84%)  · Hay espacio entre un pensamiento y otro.
+```
+
+Salen por OSC como `/eeg/2/indice/{calma…}`, `/eeg/2/estado` (id, intensidad), `/eeg/2/estado/cambio`, `/eeg/2/frase` (texto) y `/eeg/2/sesion/{tiempo,calibracion}`. Ver la especificación.
+
 ## Visor para TouchDesigner
 
 En `touchdesigner/eeg_visor_td.py` hay un componente listo para probar (TouchDesigner 2025):
@@ -140,8 +168,8 @@ Parámetros: puerto, casco, velocidad, ganancia, rótulos, resolución interna y
 | Asistente: electrodo por electrodo · *Wizard: electrode by electrode* | Asistente: conectado · *Wizard: connected* | Modo avanzado · *Advanced mode* |
 | ![Datos de la app](docs/capturas/07-datos-de-la-app.png) | ![Celular](docs/capturas/06-movil.png) | ![Conexión](docs/capturas/01-conexion-cortex.png) |
 | Asistente: datos de la app · *Wizard: Cortex app details* | Monitor en celular · *Monitor on a phone* | Conexión con Cortex · *Connecting to Cortex* |
-| ![OSC](docs/capturas/02-mensajes-osc.png) | | |
-| Mensajes OSC (simulación) · *OSC messages (simulation)* | | |
+| ![OSC](docs/capturas/02-mensajes-osc.png) | ![Historia](docs/capturas/09-historia.png) | |
+| Mensajes OSC (simulación) · *OSC messages (simulation)* | Historia: estado, frase y sesión · *Story: state, phrase and session* | |
 
 ---
 

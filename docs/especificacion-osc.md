@@ -1,4 +1,4 @@
-# Especificación OSC · Alquimia EEG OSC v0.4
+# Especificación OSC · Alquimia EEG OSC v0.5
 
 Salida común para todas las vías de lectura (Cortex hoy, lector propio después). La pieza escénica no tiene que saber qué vía está activa.
 
@@ -40,6 +40,29 @@ Salida común para todas las vías de lectura (Cortex hoy, lector propio despué
 | `/eeg/{casco}/raw` | `f` × canales | EEG crudo en µV, por muestra; solo con `--crudo` |
 | `/eeg/{casco}/source` | `i` | 0 simulación, 1 Cortex, 2 lector propio |
 | `/eeg/{casco}/valid` | `i 0/1` | 0 si la calidad < 0.4 o si pasan más de 500 ms sin datos |
+
+## Interpretación (por casco)
+
+| Dirección | Argumentos | Notas |
+|-----------|------------|-------|
+| `/eeg/{casco}/indice/{calma\|imaginacion\|atencion\|activacion\|valencia\|movimiento}` | `f 0–1` | 0.5 = línea base de la persona |
+| `/eeg/{casco}/estado` | `i id, f intensidad` | 0 neutral, 1 calma, 2 imaginación, 3 atención, 4 activación, 5 movimiento |
+| `/eeg/{casco}/estado/cambio` | `i id` | evento al cambiar |
+| `/eeg/{casco}/estado/tiempo` | `f` | segundos en el estado actual |
+| `/eeg/{casco}/frase` | `s texto` | evento; **única dirección con texto** |
+| `/eeg/{casco}/sesion/tiempo` | `f` | segundos de sesión |
+| `/eeg/{casco}/sesion/calibracion` | `f 0–1` | progreso de la línea base (1 = lista) |
+| `/eeg/{casco}/sesion/calibrando` | `i 0/1` | evento al empezar y terminar |
+
+## Entrada (puerto 9210)
+
+| Dirección | Argumentos | Qué hace |
+|-----------|------------|----------|
+| `/eeg/marca` | texto opcional | marca de escena en la sesión |
+| `/eeg/sesion/terminar` | — | guarda la sesión y empieza otra |
+| `/eeg/sesion/reiniciar` | — | empieza otra sin guardar |
+| `/eeg/sesion/recalibrar` | — | repite la línea base |
+| `/eeg/frases/recargar` | — | vuelve a leer `frases.json` |
 
 ## Del sistema
 

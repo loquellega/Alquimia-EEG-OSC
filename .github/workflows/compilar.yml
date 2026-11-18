@@ -34,7 +34,7 @@ jobs:
         run: pip install -r requirements.txt pyinstaller
 
       - name: Compilar
-        run: pyinstaller --onefile --name AlquimiaEEGOSC --add-data "monitor.html${{ matrix.sep }}." --collect-submodules websockets --noconfirm cortex_osc.py
+        run: pyinstaller --onefile --name AlquimiaEEGOSC --add-data "monitor.html${{ matrix.sep }}." --add-data "frases.json${{ matrix.sep }}." --collect-submodules websockets --noconfirm cortex_osc.py
 
       - name: Prueba rápida (simulación)
         shell: bash
@@ -54,7 +54,7 @@ jobs:
           if [ -f dist/AlquimiaEEGOSC.exe ]; then
             mv dist/AlquimiaEEGOSC.exe "dist/${{ matrix.archivo }}"
           else
-            cd dist && zip -9 "${{ matrix.archivo }}" AlquimiaEEGOSC
+            cp frases.json dist/ && cd dist && zip -9 "${{ matrix.archivo }}" AlquimiaEEGOSC frases.json
           fi
 
       - uses: actions/upload-artifact@v4

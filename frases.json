@@ -1,0 +1,58 @@
+{
+  "_instrucciones": "Librería de frases de Alquimia EEG OSC. Edítala con tu voz. 'estados' tiene tres intensidades (suave, medio, intenso). 'transiciones' se usan al pasar de un estado a otro ('origen>destino'; '*' vale para cualquiera). 'sigue' se usa cuando un estado dura mucho. Las frases no se repiten hasta agotar su grupo. Guarda este archivo junto al ejecutable (o junto a cortex_osc.py) para que el puente lo lea.",
+  "estados": {
+    "neutral": {
+      "nombre": "neutral",
+      "suave": ["Todo en su sitio.", "La mente en su peso de siempre.", "Nada sobresale: equilibrio."],
+      "medio": ["Un punto medio, sin prisa.", "Ni lejos ni cerca: aquí."],
+      "intenso": ["El centro, sostenido."]
+    },
+    "calma": {
+      "nombre": "calma",
+      "suave": ["Algo se afloja.", "La respiración baja un escalón.", "Empieza a bajar la marea."],
+      "medio": ["Ahora estás más tranquilo.", "El ruido se aparta.", "Hay espacio entre un pensamiento y otro."],
+      "intenso": ["Calma honda: el cuerpo se queda quieto.", "Agua sin viento.", "Todo se posa, como polvo en la luz."]
+    },
+    "imaginacion": {
+      "nombre": "imaginación",
+      "suave": ["La mente se asoma a otra parte.", "Una imagen empieza a formarse.", "Algo se distrae, con suavidad."],
+      "medio": ["Ahora estás más imaginativo.", "Las ideas se sueltan del suelo.", "Divagas: la escena se abre hacia dentro."],
+      "intenso": ["La imaginación está alta.", "Un sueño despierto toma el escenario.", "Todo se vuelve posible por un momento."]
+    },
+    "atencion": {
+      "nombre": "atención",
+      "suave": ["La mirada se afina.", "Algo llama tu atención.", "El foco se acerca."],
+      "medio": ["Ahora estás atento.", "Todo converge en un punto.", "La escena te sostiene."],
+      "intenso": ["Atención plena: nada más existe.", "El mundo se reduce a lo que pasa aquí.", "Foco nítido, sin bordes."]
+    },
+    "activacion": {
+      "nombre": "activación",
+      "suave": ["El pulso se levanta.", "Algo se enciende.", "Una chispa recorre el cuerpo."],
+      "medio": ["Ahora estás más activado.", "La energía sube.", "Tensión: algo está por pasar."],
+      "intenso": ["Alerta máxima.", "Todo vibra al mismo tiempo.", "Una tormenta eléctrica cruza la escena."]
+    },
+    "movimiento": {
+      "nombre": "movimiento",
+      "suave": ["La cabeza busca algo.", "Un gesto cambia el punto de vista."],
+      "medio": ["El cuerpo se mueve: la señal se agita.", "Movimiento: la mente viaja con el cuerpo."],
+      "intenso": ["Mucho movimiento: la lectura se nubla.", "El cuerpo manda por ahora."]
+    }
+  },
+  "transiciones": {
+    "imaginacion>calma": ["La imagen se disuelve en calma."],
+    "calma>imaginacion": ["De la quietud nace una imagen.", "En la calma, la imaginación se despierta."],
+    "atencion>imaginacion": ["El foco se suelta y la mente vuela."],
+    "imaginacion>atencion": ["Vuelves: algo te trae de regreso."],
+    "activacion>calma": ["Después de la tormenta, el agua se aquieta."],
+    "calma>activacion": ["La calma se rompe: algo te sacude."],
+    "*>neutral": ["Regresas al centro."],
+    "movimiento>*": ["El cuerpo se aquieta y la mente vuelve a leerse."]
+  },
+  "sigue": {
+    "calma": ["La calma se sostiene.", "Sigues en el mismo remanso."],
+    "imaginacion": ["Sigues lejos, imaginando.", "El sueño despierto continúa."],
+    "atencion": ["La atención no se rompe.", "Sigues aquí, en el centro de la escena."],
+    "activacion": ["La energía no baja.", "Sigue la tensión."],
+    "movimiento": ["El cuerpo sigue en movimiento."]
+  }
+}

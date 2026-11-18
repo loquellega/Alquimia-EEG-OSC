@@ -166,6 +166,30 @@ footer{position:fixed;right:16px;bottom:8px;color:#5c5c5c;font-size:10px;padding
     </section>
 
     <!-- AVANZADO -->
+    <section class="ventana oculto" id="vHistoria">
+      <div class="barra">historia <span class="extra" id="hTiempo">—</span></div>
+      <div class="cuerpo">
+        <div class="grande" style="margin:0 0 4px"><span class="canal" id="hEstado" style="font-size:24px">—</span><span class="nivel dim" id="hDesde"></span></div>
+        <p id="hFrase" style="font-size:15px;color:var(--a-ink-strong);min-height:22px;margin:0 0 8px"></p>
+        <div id="hCal" class="aviso oculto"></div>
+        <canvas id="hGrafica" height="96" style="width:100%;height:96px;display:block;border:1px solid var(--a-line);border-radius:var(--a-radius-sm);margin:6px 0 4px"></canvas>
+        <div class="leyenda" id="hLeyenda" style="justify-content:flex-start;padding:0 0 8px"></div>
+        <div id="hIndices"></div>
+        <div class="acciones">
+          <span class="con-boton" style="flex:1"><input id="hMarca" placeholder="marca (p. ej. escena 2)" style="flex:1;height:var(--a-ctl-h);background:var(--a-bg);color:var(--a-ink-strong);border:1px solid var(--a-line-ctl);border-radius:var(--a-radius);padding:0 10px;font:13px var(--a-font)"><button id="bMarca" type="button">marcar</button></span>
+        </div>
+        <div class="acciones">
+          <button id="bRecal" type="button">recalibrar</button>
+          <label class="campo en-linea">contraste<input id="hContraste" type="number" min="0.2" max="4" step="0.1"></label>
+          <label class="campo en-linea">permanencia s<input id="hPerm" type="number" min="1" max="60" step="1"></label>
+          <button id="bAjustar" type="button">ajustar</button>
+        </div>
+        <div class="acciones">
+          <button class="primario" id="bTerminar" type="button">terminar y guardar</button>
+          <span id="hEstadoAccion" class="dim" style="align-self:center"></span>
+        </div>
+      </div>
+    </section>
     <section class="ventana oculto" id="vOsc">
       <div class="barra">salida OSC <span class="extra" id="oscRitmo">—</span></div>
       <div class="cuerpo">
@@ -417,7 +441,7 @@ function pintar(){
   if(modo==="asistente"){
     if(pasoActual()===6){ elegirObjetivo(c); resaltar = objetivo; }
     pintarAsistente(c);
-  } else { pintarAvanzado(c); pintarOsc(); }
+  } else { pintarAvanzado(c); pintarOsc(); pintarHistoria(); }
   pintarMapa(c, resaltar);
 }
 
@@ -439,6 +463,60 @@ async function guardarCred(){
     est.textContent = r.ok ? "Guardado. Conectando…" : "No se pudo guardar. Revisa los datos.";
   }catch(e){ est.textContent="No hay conexión con el puente."; }
 }
+
+// ---------- historia ----------
+const EST = ["neutral","calma","imaginacion","atencion","activacion","movimiento"];
+const EST_NOM = {neutral:"neutral",calma:"calma",imaginacion:"imaginación",atencion:"atención",activacion:"activación",movimiento:"movimiento"};
+const EST_COL = {neutral:"#555",calma:"#46c4e2",imaginacion:"#c4de46",atencion:"#e8dc50",activacion:"#bee8ff",movimiento:"#d9822b"};
+const IND = ["calma","imaginacion","atencion","activacion","valencia","movimiento"];
+let hAjEditado = false;
+function mmss(t){ t=Math.max(0,Math.round(t)); return Math.floor(t/60)+":"+String(t%60).padStart(2,"0"); }
+function pintarHistoria(){
+  const h = S && S.historia;
+  if(!h){ $("hEstado").textContent="—"; $("hFrase").textContent="La historia empieza cuando llegan datos del casco."; return; }
+  $("hTiempo").textContent = `sesión ${mmss(h.sesion_t)} · ${h.marcas} marcas`;
+  $("hEstado").textContent = h.nombre; $("hEstado").style.color = EST_COL[h.estado]||"";
+  $("hDesde").textContent = `${Math.round(h.intensidad*100)} % · hace ${mmss(h.desde)}`;
+  $("hFrase").textContent = h.frase || "";
+  const cal = $("hCal");
+  if(h.calibracion!=null){ cal.classList.remove("oculto");
+    cal.textContent = h.calibracion===0 ? "Esperando señal válida para calibrar la línea base…" : `Calibrando la línea base: ${Math.round(h.calibracion*100)} %. Quieto, ojos abiertos, respirando normal.`; }
+  else cal.classList.add("oculto");
+  $("hIndices").innerHTML = IND.map(k=>{ const v=h.indices[k]??0.5;
+    return `<div class="fila" style="grid-template-columns:92px 1fr 44px"><span class="n">${EST_NOM[k]||k}</span><span class="medidor"><i style="width:${v*100}%;background:${EST_COL[k]||"var(--a-ink)"}"></i></span><span class="v">${v.toFixed(2)}</span></div>`;}).join("");
+  if(!hAjEditado && document.activeElement!==$("hContraste") && document.activeElement!==$("hPerm")){
+    $("hContraste").value = h.cfg.contraste; $("hPerm").value = h.cfg.permanencia; }
+  if(h.ultima_exportacion && !$("hEstadoAccion").dataset.fijo) $("hEstadoAccion").textContent = "Última sesión: " + h.ultima_exportacion.split(/[\\/]/).pop();
+  $("hLeyenda").innerHTML = ["calma","imaginacion","atencion","activacion"].map(k=>`<span><b style="background:${EST_COL[k]}"></b>${EST_NOM[k]}</span>`).join("") + `<span class="dim">franja: estado · líneas: índices</span>`;
+  graficaHistoria(h.historial||[]);
+}
+function graficaHistoria(H){
+  const cv=$("hGrafica"), dpr=window.devicePixelRatio||1, w=cv.clientWidth, hh=96;
+  if(cv.width!==w*dpr){ cv.width=w*dpr; cv.height=hh*dpr; }
+  const g=cv.getContext("2d"); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,w,hh);
+  if(H.length<2) return;
+  const n=H.length, x=i=>i*(w-1)/(n-1);
+  // franja de estado (abajo)
+  for(let i=0;i<n;i++){ g.fillStyle=EST_COL[EST[H[i][1]]]||"#555"; g.globalAlpha=.85; g.fillRect(x(i),hh-8,Math.max(1,w/n+.5),8); }
+  g.globalAlpha=1;
+  // línea de 0.5 (línea base)
+  g.strokeStyle="#2e2e2e"; g.setLineDash([3,4]); g.beginPath(); g.moveTo(0,(hh-12)/2+2); g.lineTo(w,(hh-12)/2+2); g.stroke(); g.setLineDash([]);
+  ["calma","imaginacion","atencion","activacion"].forEach((k)=>{ const j=2+IND.indexOf(k);
+    g.strokeStyle=EST_COL[k]; g.lineWidth=1.2; g.beginPath();
+    for(let i=0;i<n;i++){ const y=2+(1-H[i][j])*(hh-14); i?g.lineTo(x(i),y):g.moveTo(x(i),y); } g.stroke(); });
+}
+async function accionSesion(cuerpo, msg){
+  try{ const r=await fetch("/sesion",{method:"POST",headers:{"Content-Type":"application/json","X-Alquimia":"1"},body:JSON.stringify(cuerpo)});
+    $("hEstadoAccion").textContent = r.ok ? msg : "No se pudo."; $("hEstadoAccion").dataset.fijo = "1";
+    setTimeout(()=>{ delete $("hEstadoAccion").dataset.fijo; }, 4000);
+  }catch(e){ $("hEstadoAccion").textContent="No hay conexión con el puente."; }
+}
+$("bMarca").onclick=()=>{ const t=$("hMarca").value.trim(); accionSesion({accion:"marcar",texto:t}, "Marca guardada."); $("hMarca").value=""; };
+$("hMarca").addEventListener("keydown",e=>{ if(e.key==="Enter") $("bMarca").click(); });
+$("bRecal").onclick=()=>accionSesion({accion:"recalibrar"}, "Recalibrando línea base.");
+$("hContraste").oninput=$("hPerm").oninput=()=>{ hAjEditado=true; };
+$("bAjustar").onclick=()=>{ accionSesion({accion:"ajustar",contraste:+$("hContraste").value,permanencia:+$("hPerm").value},"Ajustado."); hAjEditado=false; };
+$("bTerminar").onclick=()=>accionSesion({accion:"terminar"}, "Sesión guardada en la carpeta «sesiones».");
 
 let oscEditado = false;
 function filaDestino(v){
@@ -478,13 +556,14 @@ function ponerModo(m){
   $("bAsis").setAttribute("aria-pressed", m==="asistente");
   $("bAvan").setAttribute("aria-pressed", m==="avanzado");
   ["vAsis","vTarjeta"].forEach(id=>$(id).classList.toggle("oculto", m!=="asistente"));
-  ["vOsc","vContacto","vCasco","vBandas","vConexion"].forEach(id=>$(id).classList.toggle("oculto", m!=="avanzado"));
+  ["vHistoria","vOsc","vContacto","vCasco","vBandas","vConexion"].forEach(id=>$(id).classList.toggle("oculto", m!=="avanzado"));
   $("tarjeta").dataset.html=""; pintar();
 }
 $("bAsis").onclick=()=>ponerModo("asistente");
 $("bAvan").onclick=()=>ponerModo("avanzado");
 document.addEventListener("keydown", e=>{
   if(e.target.tagName==="INPUT") return;
+  if(e.key==="m" && modo==="avanzado"){ e.preventDefault(); $("hMarca").focus(); }
   if(e.key==="1") ponerModo("asistente");
   if(e.key==="2") ponerModo("avanzado");
 });
