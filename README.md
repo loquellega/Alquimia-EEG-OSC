@@ -100,6 +100,18 @@ Ejemplo, en función: `python cortex_osc.py --monitor --grabar --destino 127.0.0
 
 **Nota:** con Cortex sin licencia de pago, los cascos de consumo (Insight) entregan todos los flujos, incluido el EEG crudo; los profesionales (EPOC) todo excepto el EEG crudo y las métricas de alta resolución. El EEG no lee emociones: da estimaciones de estado. Úsalas como textura escénica, no como verdad.
 
+## Visor para TouchDesigner
+
+En `touchdesigner/eeg_visor_td.py` hay un componente listo para probar (TouchDesigner 2025):
+
+1. Crea un **Text DAT**, pega el archivo y haz **clic derecho → Run Script**.
+2. Aparece **eeg_visor**: `out1` es la imagen (cinco franjas que avanzan, una por banda, con nombre, rango, valor y estado del casco) y `out2` es un CHOP con **todos** los datos (`eeg_2_band_alpha_norm`, `eeg_2_blink`, `eeg_2_metric_attention`…).
+3. Abre el puente y mira cómo se mueve.
+
+Parámetros: puerto, casco, velocidad, ganancia, rótulos, resolución interna y escala de pixelado.
+
+![Visor de TouchDesigner](docs/capturas/08-visor-touchdesigner.png)
+
 ## Problemas comunes
 
 | Mensaje | Qué hacer |
