@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Alquimia EEG OSC v0.1 — vía A (Cortex)
+Alquimia EEG OSC v0.2 — vía A (Cortex)
 Puente entre los cascos Emotiv (Insight, EPOC+) y OSC para escena.
 
 Lee los flujos de Cortex (bandas, expresiones, métricas, movimiento, contacto),
@@ -11,6 +11,7 @@ Modos:
   python cortex_osc.py                 en vivo con Cortex
   python cortex_osc.py --simular       datos sintéticos, sin casco (para probar TD/Isadora)
   python cortex_osc.py --reproducir X  reproduce una grabación .jsonl
+  python cortex_osc.py --monitor       además abre el monitor de contacto (asistente y avanzado)
 
 Diseño, investigación y desarrollo: Héctor Cruz Juárez — https://hectorcruz.com.mx
 Colección Alchemy of Meaning. · GPL-3.0-or-later
@@ -112,10 +113,15 @@ class Casco:
         self.ultimo = 0.0
         self.eventos = []         # mensajes sueltos (parpadeo, guiño)
         self.cols = {}            # flujo -> columnas que reporta Cortex
+        self.cq = None            # contacto por canal, niveles 0–4 de Cortex
+        self.senal = None         # intensidad de la conexión inalámbrica 0–1
+        self.paquetes = 0
+        self.t_parpadeo = 0.0
 
     # --- Capa 3: rasgos desde Cortex ---
     def recibir(self, flujo, datos, ahora, out=None, crudo=False):
         self.ultimo = ahora
+        self.paquetes += 1
         cols = self.cols.get(flujo)
         if cols is None:
             return
@@ -172,6 +178,7 @@ class Casco:
     def _fac(self, d):
         ojo = d.get("eyeAct")
         if ojo == "blink":
+            self.t_parpadeo = time.monotonic()
             self.eventos.append((f"/eeg/{self.n}/blink", [1]))
         elif ojo == "winkL":
             self.eventos.append((f"/eeg/{self.n}/wink", [-1]))
@@ -187,13 +194,19 @@ class Casco:
             if isinstance(c, list) and isinstance(v, list):
                 d = dict(zip(c, v))
                 total = d.pop("OVERALL", None)
-                cq = [float(d[ch]) / 4.0 for ch in (self.canales or list(d)) if ch in d]
+                if not self.canales:
+                    self.canales = list(d)
+                niveles = [d[ch] for ch in self.canales if isinstance(d.get(ch), (int, float))]
+                self.cq = [int(round(x)) for x in niveles]
+                cq = [float(x) / 4.0 for x in niveles]
                 if cq:
                     self.contacto = [clip(x, 0.0, 1.0) for x in cq]
                 if isinstance(total, (int, float)):
                     self.calidad = clip(float(total) / 100.0, 0.0, 1.0)
                 elif cq:
                     self.calidad = sum(self.contacto) / len(self.contacto)
+            elif c == "Signal" and isinstance(v, (int, float)):
+                self.senal = clip(float(v), 0.0, 1.0)
             elif c == "BatteryPercent" and isinstance(v, (int, float)):
                 self.bateria = clip(float(v) / 100.0, 0.0, 1.0)
 
@@ -249,8 +262,27 @@ class Casco:
         if self.bateria is not None:
             out.send(f"{p}/battery", [float(self.bateria)])
         out.send(f"{p}/source", [int(self.fuente)])
-        valido = (ahora - self.ultimo) < 0.5 and self.calidad >= 0.4
-        out.send(f"{p}/valid", [1 if valido else 0])
+        out.send(f"{p}/valid", [1 if self.valido(ahora) else 0])
+
+    def valido(self, ahora):
+        return (ahora - self.ultimo) < 0.5 and self.calidad >= 0.4
+
+    def resumen(self, ahora):
+        """Estado para el monitor de contacto."""
+        bandas = {}
+        for b in BANDS:
+            vals = self.band.get(b)
+            if vals:
+                bandas[b] = round(self.band_rango[b].norm(math.log10(sum(vals) / len(vals) + 1e-6)), 3)
+        return {
+            "n": self.n, "id": self.id, "fuente": self.fuente,
+            "canales": self.canales, "cq": self.cq or [],
+            "calidad": round(self.calidad, 3), "bateria": self.bateria, "senal": self.senal,
+            "edad": round(ahora - self.ultimo, 2) if self.ultimo else None,
+            "valido": self.valido(ahora), "paquetes": self.paquetes, "bandas": bandas,
+            "parpadeo": round(ahora - self.t_parpadeo, 2) if self.t_parpadeo else None,
+            "gyro": self.gyro,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -351,8 +383,12 @@ class Cortex:
 async def modo_cortex(args, out, cascos, estado):
     client_id = os.environ.get("EMOTIV_CLIENT_ID")
     secret = os.environ.get("EMOTIV_CLIENT_SECRET")
+    pasos = estado["pasos"]
     if not client_id or not secret:
-        sys.exit("Faltan EMOTIV_CLIENT_ID y EMOTIV_CLIENT_SECRET en el archivo .env")
+        estado["mensaje"] = "Faltan EMOTIV_CLIENT_ID y EMOTIV_CLIENT_SECRET en el archivo .env"
+        log(estado["mensaje"])
+        await asyncio.sleep(2)
+        sys.exit(1)
 
     por_sesion = {}  # sid -> Casco
 
@@ -365,51 +401,73 @@ async def modo_cortex(args, out, cascos, estado):
             if flujo in d:
                 casco.recibir(flujo, d[flujo], ahora, out, args.crudo)
 
+    # Paso 1: Launcher (Cortex). Espera sin cerrarse.
     cx = Cortex(args.url, al_recibir)
-    log("Conectando con Cortex en", args.url, "…")
-    try:
-        await cx.conectar()
-    except OSError as e:
-        sys.exit(f"No pude conectar con Cortex ({e}). ¿Está abierto el EMOTIV Launcher?")
-
     estado["status"] = 1
+    avisado = False
+    while True:
+        try:
+            await cx.conectar()
+            break
+        except OSError:
+            if not avisado:
+                estado["mensaje"] = "Esperando el EMOTIV Launcher… ábrelo e inicia sesión."
+                log(estado["mensaje"])
+                avisado = True
+            await asyncio.sleep(3)
+    pasos["cortex"] = True
+    log("Conectado con Cortex.")
+
+    # Paso 2: aprobación de la app
     r = await cx.llamar("requestAccess", clientId=client_id, clientSecret=secret)
-    espera = 0
+    avisado = False
     while not r.get("accessGranted"):
-        if espera == 0:
-            log("Aprueba el acceso de la app en el EMOTIV Launcher…")
+        pasos["esperando_aprobacion"] = True
+        if not avisado:
+            estado["mensaje"] = "Aprueba la app «Alquimia EEG OSC» en el EMOTIV Launcher."
+            log(estado["mensaje"])
+            avisado = True
         await asyncio.sleep(3)
-        espera += 3
-        if espera > 120:
-            sys.exit("No se aprobó el acceso en el Launcher.")
         r = await cx.llamar("requestAccess", clientId=client_id, clientSecret=secret)
-    token = (await cx.llamar("authorize", clientId=client_id, clientSecret=secret))["cortexToken"]
+    pasos["esperando_aprobacion"] = False
+    try:
+        token = (await cx.llamar("authorize", clientId=client_id, clientSecret=secret))["cortexToken"]
+    except CortexError as e:
+        estado["mensaje"] = f"No se pudo autorizar: {e}. Revisa el Client ID y el Secret, y que el Launcher tenga tu sesión iniciada."
+        log(estado["mensaje"])
+        await asyncio.sleep(2)
+        sys.exit(1)
+    pasos["autorizado"] = True
     log("Autorizado.")
 
-    # Buscar y conectar cascos
-    await cx.llamar("controlDevice", command="refresh")
-    await asyncio.sleep(3)
-    for intento in range(20):
+    # Paso 3: buscar y conectar el casco. Espera sin cerrarse.
+    avisado = False
+    while True:
+        await cx.llamar("controlDevice", command="refresh")
+        await asyncio.sleep(3)
         lista = await cx.llamar("queryHeadsets") or []
         if args.casco:
             lista = [h for h in lista if args.casco.upper() in h["id"].upper()]
         if lista:
             break
-        if intento == 0:
-            log("Buscando cascos… (enciéndelo y revisa el Bluetooth)")
-        await asyncio.sleep(3)
-    else:
-        sys.exit("No encontré ningún casco.")
+        if not avisado:
+            estado["mensaje"] = "Buscando el casco… enciéndelo (luz blanca) y revisa el Bluetooth de la computadora."
+            log(estado["mensaje"])
+            avisado = True
 
+    pasos["casco"] = ", ".join(h["id"] for h in lista)
     for h in lista:
         if h.get("status") != "connected":
-            log("Conectando", h["id"], "…")
+            pasos["casco_estado"] = "conectando"
+            estado["mensaje"] = f"Conectando {h['id']}…"
+            log(estado["mensaje"])
             await cx.llamar("controlDevice", command="connect", headset=h["id"])
-    for _ in range(20):
+    while True:
         lista2 = {h["id"]: h for h in (await cx.llamar("queryHeadsets") or [])}
         if all(lista2.get(h["id"], {}).get("status") == "connected" for h in lista):
             break
         await asyncio.sleep(2)
+    pasos["casco_estado"] = "conectado"
 
     streams = STREAMS_BASE + (["eeg"] if args.crudo else [])
     for h in lista:
@@ -429,24 +487,103 @@ async def modo_cortex(args, out, cascos, estado):
         if "eeg" in casco.cols:
             casco.canales = [c for c in casco.cols["eeg"]
                              if c not in ("COUNTER", "INTERPOLATED", "RAW_CQ", "MARKER_HARDWARE", "MARKERS")]
-        nombres = ", ".join(casco.cols)
-        log(f"Casco {n} ({hid}) → flujos: {nombres}")
+        pasos["flujos"] = list(casco.cols)
+        log(f"Casco {n} ({hid}) → flujos: {', '.join(casco.cols)}")
         for fail in res.get("failure", []):
             log(f"  sin flujo {fail.get('streamName')}: {fail.get('message')}")
 
     if not cascos:
-        sys.exit("No quedó ningún casco suscrito.")
+        estado["mensaje"] = "No quedó ningún casco suscrito."
+        log(estado["mensaje"])
+        await asyncio.sleep(2)
+        sys.exit(1)
     estado["status"] = 2
+    estado["mensaje"] = ""
     log(f"En vivo. Enviando OSC a {', '.join(args.destino)} a {args.hz} Hz. Ctrl+C para salir.")
     await asyncio.Event().wait()
+
+
+# ---------------------------------------------------------------------------
+# Monitor de contacto (página local con asistente y modo avanzado)
+# ---------------------------------------------------------------------------
+class Monitor:
+    def __init__(self, cascos, estado, puerto, modo):
+        self.cascos = cascos
+        self.estado = estado
+        self.puerto = puerto
+        self.modo = modo
+        self.clientes = set()
+
+    async def iniciar(self, abrir=True):
+        import http.server
+        import threading
+        import webbrowser
+        import websockets
+        html = Path(__file__).with_name("monitor.html")
+        puerto_ws = self.puerto + 1
+
+        class Pagina(http.server.BaseHTTPRequestHandler):
+            def do_GET(self_):
+                if self_.path.split("?")[0] not in ("/", "/index.html"):
+                    self_.send_error(404)
+                    return
+                cuerpo = html.read_bytes().replace(b"__WS_PORT__", str(puerto_ws).encode())
+                self_.send_response(200)
+                self_.send_header("Content-Type", "text/html; charset=utf-8")
+                self_.send_header("Content-Length", str(len(cuerpo)))
+                self_.end_headers()
+                self_.wfile.write(cuerpo)
+
+            def log_message(self_, *a):
+                pass
+
+        try:
+            srv = http.server.ThreadingHTTPServer(("127.0.0.1", self.puerto), Pagina)
+            await websockets.serve(self._cliente, "127.0.0.1", puerto_ws)
+        except OSError:
+            sys.exit(f"Los puertos {self.puerto} y {puerto_ws} están ocupados. ¿Hay otro puente abierto? "
+                     f"Ciérralo o usa --monitor-puerto con otro número.")
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        asyncio.create_task(self._emitir())
+        url = f"http://localhost:{self.puerto}"
+        log("Monitor de contacto en", url)
+        if abrir:
+            webbrowser.open(url)
+
+    async def _cliente(self, ws):
+        self.clientes.add(ws)
+        try:
+            await ws.wait_closed()
+        finally:
+            self.clientes.discard(ws)
+
+    def instantanea(self):
+        ahora = time.monotonic()
+        return {
+            "modo": self.modo, "status": self.estado["status"],
+            "mensaje": self.estado.get("mensaje", ""), "pasos": self.estado["pasos"],
+            "cascos": [c.resumen(ahora) for c in sorted(self.cascos.values(), key=lambda c: c.n)],
+        }
+
+    async def _emitir(self):
+        while True:
+            if self.clientes:
+                msg = json.dumps(self.instantanea())
+                for ws in list(self.clientes):
+                    try:
+                        await ws.send(msg)
+                    except Exception:
+                        self.clientes.discard(ws)
+            await asyncio.sleep(0.1)
 
 
 # ---------------------------------------------------------------------------
 # Modo simulación (sin casco) y reproducción
 # ---------------------------------------------------------------------------
 async def modo_simular(args, out, cascos, estado):
+    import random
     n = 2
-    c = Casco(n, "SIMULADO", fuente=0, suavizado=args.suavizado)
+    c = Casco(n, "INSIGHT-SIMULADO", fuente=0, suavizado=args.suavizado)
     canales = ["AF3", "T7", "Pz", "T8", "AF4"]
     c.cols = {
         "pow": [f"{ch}/{b}" for ch in canales for b in BANDS],
@@ -455,9 +592,14 @@ async def modo_simular(args, out, cascos, estado):
         "dev": ["Battery", "Signal", canales + ["OVERALL"], "BatteryPercent"],
         "mot": ["Q0", "Q1", "Q2", "Q3"],
     }
+    pasos = estado["pasos"]
+    pasos.update(cortex=True, autorizado=True, casco=c.id, casco_estado="conectado",
+                 flujos=list(c.cols))
     cascos[n] = c
     estado["status"] = 2
     log("Simulando el casco 2 (Insight). Enviando OSC a", ", ".join(args.destino))
+    # El contacto mejora poco a poco, electrodo por electrodo, para probar el asistente
+    llegada = {ch: 4 + 5 * i + random.uniform(0, 2) for i, ch in enumerate(canales)}
     t0 = time.monotonic()
     k = 0
     while True:
@@ -465,9 +607,13 @@ async def modo_simular(args, out, cascos, estado):
         ahora = time.monotonic()
         lento = 0.5 + 0.5 * math.sin(t / 8.0)
         c.recibir("pow", [(2 + 6 * lento) * (1 + 0.2 * math.sin(t * 3 + i)) for i in range(25)], ahora)
+        if k % 4 == 0:
+            niveles = [int(clip((t - llegada[ch]) * 0.6 + 1, 0, 4)) if t > llegada[ch] - 3 else 0
+                       for ch in canales]
+            total = int(100 * sum(niveles) / (4 * len(niveles)))
+            c.recibir("dev", [4, 0.9, niveles + [total], 80], ahora)
         if k % 8 == 0:
             c.recibir("met", [lento, 0.6, 0.4, 1 - lento, lento, 0.5, 0.7], ahora)
-            c.recibir("dev", [4, 2, [4, 3, 4, 4, 3, 90], 80], ahora)
         ojo = "blink" if k % 40 == 0 else "neutral"
         c.recibir("fac", [ojo, "neutral", 0.0, "smile" if lento > 0.8 else "neutral", lento], ahora)
         yaw = math.radians(20 * math.sin(t / 3))
@@ -507,7 +653,13 @@ async def principal(args):
         if args.reproducir:
             await modo_reproducir(args, out)
             return
-        cascos, estado = {}, {"status": 0}
+        cascos = {}
+        estado = {"status": 0, "mensaje": "",
+                  "pasos": {"cortex": False, "esperando_aprobacion": False, "autorizado": False,
+                            "casco": "", "casco_estado": "", "flujos": []}}
+        if args.monitor:
+            mon = Monitor(cascos, estado, args.monitor_puerto, "simulacion" if args.simular else "cortex")
+            await mon.iniciar(abrir=not args.no_abrir)
         tarea = asyncio.create_task(bucle_salida(cascos, out, args.hz, estado))
         try:
             if args.simular:
@@ -531,6 +683,10 @@ def main():
     ap.add_argument("--casco", help="usar solo el casco cuyo id contenga este texto (p. ej. INSIGHT)")
     ap.add_argument("--crudo", action="store_true", help="enviar también el EEG crudo en /eeg/{casco}/raw")
     ap.add_argument("--grabar", action="store_true", help="grabar la sesión en grabaciones/*.jsonl")
+    ap.add_argument("--monitor", action="store_true",
+                    help="abrir el monitor de contacto (asistente y modo avanzado) en el navegador")
+    ap.add_argument("--monitor-puerto", type=int, default=9201, help="puerto del monitor (9201; usa también el siguiente)")
+    ap.add_argument("--no-abrir", action="store_true", help="con --monitor: no abrir el navegador solo")
     ap.add_argument("--simular", action="store_true", help="datos sintéticos, sin casco")
     ap.add_argument("--reproducir", metavar="ARCHIVO", help="reproducir una grabación .jsonl")
     ap.add_argument("--bucle", action="store_true", help="con --reproducir: repetir sin fin")

@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Alquimia EEG OSC · monitor de contacto</title>
+<style>
+:root{
+  --a-bg:#0a0a0a; --a-panel:#101010; --a-bar:#1c1c1c; --a-line:#2e2e2e; --a-line-ctl:#3a3a3a; --a-hover:#1f1f1f;
+  --a-ink:#d2d2d2; --a-ink-strong:#fff; --a-ink-dim:#8f8f8f;
+  --a-accent:#76c411; --a-accent-ink:#a5e04a; --a-accent-bg:#1b2512;
+  --a-radius:3px; --a-radius-sm:2px; --a-gap:8px; --a-pad:10px; --a-bar-h:24px; --a-ctl-h:32px; --a-t:120ms;
+  --a-font:Inter,Arial,Helvetica,sans-serif; --a-size:12px; --a-size-sm:11px;
+  /* niveles de contacto (estado del electrodo: excepción semántica, no decoración) */
+  --q0:#3a3a3a; --q1:#d64b3c; --q2:#d9822b; --q3:#c9b23a; --q4:var(--a-accent);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--a-bg);color:var(--a-ink);font:var(--a-size)/1.45 var(--a-font);font-variant-numeric:tabular-nums}
+button{font:inherit;color:var(--a-ink);background:var(--a-panel);border:1px solid var(--a-line-ctl);border-radius:var(--a-radius);height:var(--a-ctl-h);padding:0 12px;cursor:pointer;transition:background var(--a-t),border-color var(--a-t),color var(--a-t)}
+button:hover{background:var(--a-hover)}
+button:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--a-accent);outline-offset:1px}
+button.primario{border-color:var(--a-accent);color:var(--a-accent-ink);background:var(--a-accent-bg)}
+button:disabled{opacity:.45;cursor:default}
+.seg{display:inline-flex;border:1px solid var(--a-line-ctl);border-radius:var(--a-radius);overflow:hidden}
+.seg button{border:0;border-radius:0;height:26px;background:transparent;color:var(--a-ink-dim)}
+.seg button+button{border-left:1px solid var(--a-line-ctl)}
+.seg button[aria-pressed="true"]{color:var(--a-ink-strong);background:var(--a-hover)}
+
+header{display:flex;align-items:center;gap:14px;height:44px;padding:0 16px;padding-top:env(safe-area-inset-top);border-bottom:1px solid var(--a-line)}
+header .titulo{color:var(--a-ink-strong);letter-spacing:.02em}
+header .titulo span{color:var(--a-ink-dim)}
+header .der{margin-left:auto;display:flex;gap:10px;align-items:center}
+.pastilla{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border:1px solid var(--a-line-ctl);border-radius:11px;color:var(--a-ink-dim);font-size:var(--a-size-sm)}
+.pastilla i{width:7px;height:7px;border-radius:50%;background:var(--q0)}
+.pastilla.vivo{border-color:var(--a-accent);color:var(--a-accent-ink);background:var(--a-accent-bg)}
+.pastilla.vivo i{background:var(--a-accent)}
+.pastilla.medio i{background:var(--q2)}
+.pastilla.mal i{background:var(--q1)}
+.etiqueta-sim{font-size:var(--a-size-sm);color:var(--a-ink-dim);border:1px dashed var(--a-line-ctl);border-radius:var(--a-radius-sm);padding:1px 6px}
+
+main{display:grid;grid-template-columns:minmax(360px,1fr) 440px;gap:16px;padding:16px;height:calc(100% - 44px)}
+@media (max-width:900px){main{grid-template-columns:1fr;height:auto}
+  header{height:auto;flex-wrap:wrap;row-gap:8px;padding-top:calc(8px + env(safe-area-inset-top));padding-bottom:8px}
+  header .titulo span{display:none} header .der{margin-left:0;width:100%;justify-content:space-between}
+  footer{position:static;text-align:right;padding:0 16px 12px}}
+
+.ventana{background:var(--a-panel);border:1px solid var(--a-line);border-radius:var(--a-radius);display:flex;flex-direction:column;min-height:0}
+.ventana>.barra{height:var(--a-bar-h);display:flex;align-items:center;padding:0 var(--a-pad);background:var(--a-bar);color:var(--a-ink);font-size:var(--a-size-sm);border-bottom:1px solid var(--a-line);letter-spacing:.06em;text-transform:uppercase}
+.ventana>.barra .extra{margin-left:auto;text-transform:none;letter-spacing:0;color:var(--a-ink-dim)}
+.ventana>.cuerpo{padding:12px var(--a-pad);overflow:auto;scrollbar-width:thin;scrollbar-color:var(--a-line-ctl) transparent}
+.columna{display:flex;flex-direction:column;gap:12px;min-height:0;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--a-line-ctl) transparent}
+
+/* cabeza */
+.cabeza{flex:1;display:flex;flex-direction:column}
+.cabeza .cuerpo{flex:1;display:flex;align-items:center;justify-content:center;position:relative}
+svg#mapa{width:100%;height:100%;max-height:72vh}
+.contorno{fill:none;stroke:var(--a-line-ctl);stroke-width:1.5}
+.guia{fill:none;stroke:var(--a-line);stroke-width:1;stroke-dasharray:3 5}
+.elec circle.punto{stroke:#000;stroke-width:1;transition:fill var(--a-t)}
+.elec text{font:600 13px var(--a-font);text-anchor:middle;dominant-baseline:central;pointer-events:none}
+.elec .anillo{fill:none;stroke:var(--a-ink-strong);stroke-width:1.5;opacity:0}
+.elec.objetivo .anillo{opacity:1;animation:pulso 1.2s ease-in-out infinite}
+@keyframes pulso{0%,100%{stroke-opacity:1}50%{stroke-opacity:.25}}
+@media (prefers-reduced-motion:reduce){.elec.objetivo .anillo{animation:none}}
+.leyenda{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;padding:8px 0 2px;color:var(--a-ink-dim);font-size:var(--a-size-sm)}
+.leyenda b{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+
+/* asistente */
+.pasos{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.pasos li{display:flex;gap:10px;align-items:center;height:28px;padding:0 8px;border-radius:var(--a-radius-sm);color:var(--a-ink-dim)}
+.pasos li .num{width:18px;height:18px;border:1px solid var(--a-line-ctl);border-radius:50%;display:grid;place-items:center;font-size:10px}
+.pasos li.hecho{color:var(--a-ink)}
+.pasos li.hecho .num{border-color:var(--a-accent);color:var(--a-accent-ink)}
+.pasos li.actual{background:var(--a-hover);color:var(--a-ink-strong)}
+.pasos li.actual .num{border-color:var(--a-ink-strong)}
+.tarjeta h2{margin:0 0 6px;font-size:18px;font-weight:600;color:var(--a-ink-strong)}
+.tarjeta p{margin:0 0 10px;color:var(--a-ink)}
+.tarjeta ul{margin:6px 0 12px;padding-left:16px;color:var(--a-ink)}
+.tarjeta ul li{margin:3px 0}
+.dim{color:var(--a-ink-dim)}
+.grande{display:flex;align-items:baseline;gap:12px;margin:4px 0 10px}
+.grande .canal{font-size:34px;font-weight:600;color:var(--a-ink-strong);letter-spacing:.02em}
+.grande .nivel{font-size:14px}
+.acciones{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.aviso{border-left:2px solid var(--q2);padding:6px 10px;background:#1a140c;color:var(--a-ink);margin:8px 0;border-radius:0 var(--a-radius-sm) var(--a-radius-sm) 0}
+.listo{border-left-color:var(--a-accent);background:var(--a-accent-bg)}
+
+/* medidores */
+.fila{display:grid;grid-template-columns:52px 1fr 78px;gap:10px;align-items:center;height:24px}
+.fila .n{color:var(--a-ink-strong)}
+.fila .v{text-align:right;color:var(--a-ink-dim);font-size:var(--a-size-sm)}
+.medidor{height:3px;background:var(--a-line);border-radius:2px;overflow:hidden}
+.medidor>i{display:block;height:100%;width:0;background:var(--a-accent);transition:width var(--a-t)}
+.dato{display:grid;grid-template-columns:1fr auto;height:22px;align-items:center}
+.dato span:first-child{color:var(--a-ink-dim)}
+.dato span:last-child{color:var(--a-ink-strong)}
+.parpadeo{display:inline-block;width:10px;height:10px;border-radius:50%;border:1px solid var(--a-line-ctl);vertical-align:-1px}
+.parpadeo.on{background:var(--a-ink-strong);border-color:var(--a-ink-strong)}
+code{color:var(--a-ink-strong);background:var(--a-bar);padding:1px 5px;border-radius:var(--a-radius-sm)}
+.oculto{display:none!important}
+footer{position:fixed;right:16px;bottom:8px;color:#5c5c5c;font-size:10px;padding-bottom:env(safe-area-inset-bottom)}
+</style>
+</head>
+<body>
+<header>
+  <div class="titulo">Alquimia EEG OSC <span>· monitor de contacto</span></div>
+  <div class="seg" role="group" aria-label="Modo">
+    <button id="bAsis" aria-pressed="true" title="Asistente (1)">asistente</button>
+    <button id="bAvan" aria-pressed="false" title="Avanzado (2)">avanzado</button>
+  </div>
+  <div class="seg oculto" role="group" aria-label="Casco" id="selCasco"></div>
+  <div class="der">
+    <span id="sim" class="etiqueta-sim oculto">simulación</span>
+    <span id="estado" class="pastilla" role="status"><i></i><span>sin puente</span></span>
+  </div>
+</header>
+
+<main>
+  <section class="ventana cabeza" aria-label="Mapa de electrodos">
+    <div class="barra">electrodos <span class="extra" id="modelo">—</span></div>
+    <div class="cuerpo">
+      <svg id="mapa" viewBox="-130 -135 260 270" aria-hidden="true">
+        <path class="contorno" d="M -12 -112 L 0 -126 L 12 -112"/>
+        <ellipse class="contorno" cx="-108" cy="0" rx="8" ry="20"/>
+        <ellipse class="contorno" cx="108" cy="0" rx="8" ry="20"/>
+        <circle class="contorno" cx="0" cy="0" r="105"/>
+        <circle class="guia" cx="0" cy="0" r="70"/>
+        <line class="guia" x1="0" y1="-105" x2="0" y2="105"/>
+        <line class="guia" x1="-105" y1="0" x2="105" y2="0"/>
+        <g id="electrodos"></g>
+      </svg>
+    </div>
+    <div class="leyenda">
+      <span><b style="background:var(--q4)"></b>bueno</span>
+      <span><b style="background:var(--q3)"></b>aceptable</span>
+      <span><b style="background:var(--q2)"></b>pobre</span>
+      <span><b style="background:var(--q1)"></b>malo</span>
+      <span><b style="background:var(--q0)"></b>sin señal</span>
+      <span class="dim">vista desde arriba · nariz arriba</span>
+    </div>
+  </section>
+
+  <div class="columna">
+    <!-- ASISTENTE -->
+    <section class="ventana" id="vAsis" aria-label="Asistente">
+      <div class="barra">asistente <span class="extra" id="pasoN"></span></div>
+      <div class="cuerpo">
+        <ol class="pasos" id="listaPasos"></ol>
+      </div>
+    </section>
+    <section class="ventana" id="vTarjeta" aria-live="polite">
+      <div class="barra">paso actual</div>
+      <div class="cuerpo tarjeta" id="tarjeta"></div>
+    </section>
+
+    <!-- AVANZADO -->
+    <section class="ventana oculto" id="vContacto">
+      <div class="barra">contacto por canal <span class="extra">niveles 0–4</span></div>
+      <div class="cuerpo" id="filasContacto"></div>
+    </section>
+    <section class="ventana oculto" id="vCasco">
+      <div class="barra">casco</div>
+      <div class="cuerpo" id="datosCasco"></div>
+    </section>
+    <section class="ventana oculto" id="vBandas">
+      <div class="barra">bandas · norm <span class="extra">parpadeo <i class="parpadeo" id="parp"></i></span></div>
+      <div class="cuerpo" id="filasBandas"></div>
+    </section>
+    <section class="ventana oculto" id="vConexion">
+      <div class="barra">conexión</div>
+      <div class="cuerpo" id="datosConexion"></div>
+    </section>
+  </div>
+</main>
+<footer>Alchemy of Meaning · Héctor Cruz Juárez</footer>
+
+<script>
+const WS_PORT = "__WS_PORT__";
+const POS = {
+  // Insight
+  AF3:[-34,-80], AF4:[34,-80], T7:[-96,0], T8:[96,0], Pz:[0,62],
+  // EPOC+
+  F7:[-72,-58], F8:[72,-58], F3:[-40,-52], F4:[40,-52], FC5:[-66,-26], FC6:[66,-26],
+  P7:[-76,56], P8:[76,56], O1:[-30,94], O2:[30,94]
+};
+const PISTA = {
+  AF3:"Frente, lado izquierdo, arriba de la ceja. Va directo sobre la piel: aparta el fleco.",
+  AF4:"Frente, lado derecho, arriba de la ceja. Va directo sobre la piel: aparta el fleco.",
+  T7:"Sien izquierda, arriba de la oreja. Separa el cabello con el dedo y apoya la punta en la piel.",
+  T8:"Sien derecha, arriba de la oreja. Separa el cabello con el dedo y apoya la punta en la piel.",
+  Pz:"Parte alta de atrás de la cabeza, al centro. Mete la punta entre el cabello hasta sentir la piel.",
+  F7:"Frente, borde izquierdo, cerca del nacimiento del cabello.", F8:"Frente, borde derecho, cerca del nacimiento del cabello.",
+  F3:"Frente izquierda, sobre el cabello: sepáralo hasta tocar piel.", F4:"Frente derecha, sobre el cabello: sepáralo hasta tocar piel.",
+  FC5:"Arriba y adelante de la oreja izquierda.", FC6:"Arriba y adelante de la oreja derecha.",
+  P7:"Detrás y arriba de la oreja izquierda.", P8:"Detrás y arriba de la oreja derecha.",
+  O1:"Nuca, a la izquierda del centro.", O2:"Nuca, a la derecha del centro."
+};
+const NIVEL = ["sin señal","malo","pobre","aceptable","bueno"];
+const COLOR = ["var(--q0)","var(--q1)","var(--q2)","var(--q3)","var(--q4)"];
+const TINTA = ["#d2d2d2","#fff","#111","#111","#0a0a0a"];
+const BANDAS = ["theta","alpha","betaL","betaH","gamma"];
+const $ = id => document.getElementById(id);
+
+let S = null, conectado = false, modo = "asistente", cascoSel = null;
+let objetivo = null, objetivoBienDesde = 0, quietoDesde = 0, colocarListo = false, paqPrev = null;
+
+function modelo(c){ return c.n===1 ? "EPOC+" : c.n===2 ? "Insight" : (c.id||"casco"); }
+function casco(){ if(!S||!S.cascos.length) return null; return S.cascos.find(c=>c.n===cascoSel) || S.cascos[0]; }
+function nivelesListos(c){ return c && c.cq.length && c.cq.every(v=>v>=3); }
+
+// ---------- conexión con el puente ----------
+function conectar(){
+  const ws = new WebSocket(`ws://${location.hostname}:${WS_PORT}`);
+  ws.onopen = ()=>{ conectado = true; };
+  ws.onmessage = e => { S = JSON.parse(e.data); pintar(); };
+  ws.onclose = ()=>{ conectado = false; S = null; pintar(); setTimeout(conectar, 1500); };
+}
+
+// ---------- pasos del asistente ----------
+const PASOS = [
+  {t:"Puente activo", ok:()=>conectado},
+  {t:"EMOTIV Launcher", ok:()=>S && S.pasos.cortex},
+  {t:"Aprobar la app", ok:()=>S && S.pasos.autorizado},
+  {t:"Casco encendido y conectado", ok:()=>{const c=casco(); return S && S.pasos.casco_estado==="conectado" && c && c.edad!=null && c.edad<1.5;}},
+  {t:"Colocar el casco", ok:()=>{const c=casco(); return colocarListo || (c && c.cq.some(v=>v>=1));}},
+  {t:"Electrodo por electrodo", ok:()=>nivelesListos(casco())},
+  {t:"Quietud", ok:()=>quietoDesde && performance.now()-quietoDesde>5000}
+];
+function pasoActual(){ for(let i=0;i<PASOS.length;i++){ if(!PASOS[i].ok()) return i; } return PASOS.length; }
+
+function tarjeta(i){
+  const c = casco(), epoc = c && c.n===1;
+  const msg = S && S.mensaje ? `<div class="aviso">${S.mensaje}</div>` : "";
+  switch(i){
+    case 0: return `<h2>Inicia el puente</h2><p>Esta página se alimenta del puente. En la terminal, dentro de la carpeta del proyecto:</p>
+      <p><code>python cortex_osc.py --monitor</code></p><p class="dim">Si ya lo iniciaste, espera unos segundos: la página se reconecta sola.</p>`;
+    case 1: return `<h2>Abre el EMOTIV Launcher</h2><p>Ábrelo e inicia sesión con tu cuenta de Emotiv. El puente lo está esperando y sigue solo en cuanto lo encuentra.</p>${msg}`;
+    case 2: return `<h2>Aprueba la app</h2><p>En el Launcher aparece una solicitud de <b>Alquimia EEG OSC</b>. Apruébala. Solo se pide la primera vez.</p>${msg}`;
+    case 3: return `<h2>Enciende y conecta el casco</h2><ul>
+      <li>Carga el casco si la batería está baja.</li>
+      <li>Enciéndelo: debe prender la luz blanca.</li>
+      <li>Activa el Bluetooth de la computadora (o conecta el USB Receiver).</li>
+      <li>El puente lo busca y lo conecta solo; no hace falta emparejarlo a mano.</li></ul>${msg}`;
+    case 4: return `<h2>Colócate el casco</h2><ul>
+      ${epoc ? "<li>Moja bien las esponjas con solución salina antes de ponerlo.</li>" : ""}
+      <li>${epoc ? "Desliza el casco desde atrás hacia adelante." : "Desliza el casco desde atrás; la banda va en la parte alta de la nuca."}</li>
+      <li>Los dos sensores de la frente van sobre piel, a dos dedos de las cejas.</li>
+      <li>Ajusta primero los <b>sensores de referencia</b> (detrás de la oreja): sin ellos ningún canal da lectura.</li></ul>
+      <div class="acciones"><button class="primario" id="bColocado">ya está puesto</button></div>`;
+    case 5: {
+      const ch = objetivo; if(!c || !ch) return `<h2>Electrodo por electrodo</h2><p class="dim">Esperando lecturas de contacto…</p>`;
+      const k = c.canales.indexOf(ch), v = c.cq[k] ?? 0;
+      const buenos = c.cq.filter(x=>x>=3).length;
+      return `<h2>Electrodo por electrodo</h2>
+        <div class="grande"><span class="canal">${ch}</span><span class="nivel" style="color:${COLOR[v]}">${NIVEL[v]}</span></div>
+        <p>${PISTA[ch]||""}</p>
+        <ul><li>Presiona suave y gira un poco el sensor, como atornillándolo.</li>
+        <li>Aparta el cabello hasta que la punta toque la piel.</li>
+        <li>${epoc ? "Si sigue en rojo, vuelve a mojar la esponja con solución salina." : "Si sigue en rojo, humedece apenas la punta con un poco de solución salina o agua."}</li>
+        <li>Si todos siguen en negro o rojo, revisa la referencia detrás de la oreja.</li></ul>
+        <p class="dim">${buenos} de ${c.cq.length} en verde o amarillo. Paso al siguiente en cuanto este llegue a aceptable.</p>
+        <div class="acciones"><button id="bSaltar">saltar este</button></div>`;
+    }
+    case 6: return `<h2>Quietud</h2><p>Todos los electrodos tienen contacto. Respira y quédate quieto cinco segundos para comprobar que la señal se sostiene.</p>`;
+    default: {
+      const q = c ? Math.round(c.calidad*100) : 0, b = c && c.bateria!=null ? Math.round(c.bateria*100)+" %" : "—";
+      return `<div class="aviso listo"><b>Conectado. Listo para escena.</b></div>
+        <div class="dato"><span>calidad global</span><span>${q} %</span></div>
+        <div class="dato"><span>batería</span><span>${b}</span></div>
+        <p style="margin-top:10px">En TouchDesigner o Isadora, <code>/eeg/${c?c.n:2}/valid</code> vale 1 mientras la señal es confiable.</p>
+        <div class="acciones"><button class="primario" id="bIrAvan">ir al modo avanzado</button></div>`;
+    }
+  }
+}
+
+function elegirObjetivo(c){
+  if(!c || !c.cq.length){ objetivo=null; return; }
+  const ahora = performance.now();
+  if(objetivo && c.canales.includes(objetivo)){
+    const v = c.cq[c.canales.indexOf(objetivo)];
+    if(v>=3){ if(!objetivoBienDesde) objetivoBienDesde=ahora; if(ahora-objetivoBienDesde<1500) return; }
+    else { objetivoBienDesde=0; return; }
+  }
+  objetivoBienDesde = 0;
+  let peor=null, min=9;
+  c.canales.forEach((ch,i)=>{ if(c.cq[i]<3 && c.cq[i]<min){min=c.cq[i]; peor=ch;} });
+  objetivo = peor;
+}
+
+// ---------- pintar ----------
+function pintarMapa(c, resaltar){
+  const g = $("electrodos"); g.innerHTML = "";
+  if(!c) return;
+  c.canales.forEach((ch,i)=>{
+    const p = POS[ch]; if(!p) return;
+    const v = c.cq[i] ?? 0;
+    const el = document.createElementNS("http://www.w3.org/2000/svg","g");
+    el.setAttribute("class","elec"+(resaltar===ch?" objetivo":""));
+    el.innerHTML = `<circle class="anillo" cx="${p[0]}" cy="${p[1]}" r="21"/>
+      <circle class="punto" cx="${p[0]}" cy="${p[1]}" r="16" fill="${COLOR[v]}"/>
+      <text x="${p[0]}" y="${p[1]}" fill="${TINTA[v]}" font-size="${ch.length>2?10:12}">${ch}</text>`;
+    el.innerHTML += `<title>${ch}: ${NIVEL[v]}</title>`;
+    g.appendChild(el);
+  });
+}
+
+function pintarEstado(c){
+  const e = $("estado"), t = e.querySelector("span");
+  e.className = "pastilla";
+  if(!conectado){ t.textContent="sin puente"; e.classList.add("mal"); return; }
+  if(!c || c.edad==null || c.edad>1.5){ t.textContent = S && S.pasos.cortex ? "sin datos del casco" : "esperando Launcher"; e.classList.add("medio"); return; }
+  if(c.valido && nivelesListos(c)){ t.textContent="en vivo · conectado"; e.classList.add("vivo"); return; }
+  if(c.valido){ t.textContent="en vivo · revisa contacto"; e.classList.add("medio"); return; }
+  t.textContent="conectado · contacto bajo"; e.classList.add("medio");
+}
+
+function pintarAsistente(c){
+  const i = pasoActual();
+  $("listaPasos").innerHTML = PASOS.map((p,k)=>`<li class="${k<i?"hecho":k===i?"actual":""}"><span class="num">${k<i?"✓":k+1}</span>${p.t}</li>`).join("")
+    + `<li class="${i>=PASOS.length?"hecho actual":""}"><span class="num">${i>=PASOS.length?"✓":"·"}</span>Listo</li>`;
+  $("pasoN").textContent = i>=PASOS.length ? "completo" : `paso ${i+1} de ${PASOS.length}`;
+  const html = tarjeta(i);
+  if($("tarjeta").dataset.html !== html){ $("tarjeta").innerHTML = html; $("tarjeta").dataset.html = html; enlazar(); }
+  return i;
+}
+
+function pintarAvanzado(c){
+  if(!c){ $("filasContacto").innerHTML = `<p class="dim">Sin casco todavía.</p>`; $("datosCasco").innerHTML=""; $("filasBandas").innerHTML=""; }
+  else{
+    $("filasContacto").innerHTML = c.canales.map((ch,i)=>{ const v=c.cq[i]??0;
+      return `<div class="fila"><span class="n">${ch}</span><span class="medidor"><i style="width:${v*25}%;background:${COLOR[v]}"></i></span><span class="v" style="color:${COLOR[v]}">${NIVEL[v]}</span></div>`;}).join("");
+    const pps = paqPrev ? Math.max(0,(c.paquetes-paqPrev.p)/((performance.now()-paqPrev.t)/1000)) : 0;
+    if(!paqPrev || performance.now()-paqPrev.t>1000) paqPrev = {p:c.paquetes, t:performance.now(), pps};
+    const pc = x => x==null ? "—" : Math.round(x*100)+" %";
+    $("datosCasco").innerHTML = [
+      ["modelo", `${modelo(c)} · casco ${c.n}`], ["id", c.id||"—"],
+      ["señal válida (valid)", c.valido ? "sí" : "no"], ["calidad global", pc(c.calidad)],
+      ["batería", pc(c.bateria)], ["intensidad inalámbrica", pc(c.senal)],
+      ["últimos datos", c.edad==null ? "—" : c.edad<0.2 ? "ahora" : `hace ${c.edad.toFixed(1)} s`],
+      ["paquetes por segundo", (paqPrev.pps||0).toFixed(0)]
+    ].map(([a,b])=>`<div class="dato"><span>${a}</span><span>${b}</span></div>`).join("");
+    $("filasBandas").innerHTML = BANDAS.map(b=>{ const v=c.bandas[b]; return v==null?"":
+      `<div class="fila"><span class="n">${b}</span><span class="medidor"><i style="width:${v*100}%"></i></span><span class="v">${v.toFixed(2)}</span></div>`;}).join("");
+    $("parp").classList.toggle("on", c.parpadeo!=null && c.parpadeo<0.25);
+  }
+  const p = S ? S.pasos : {};
+  const si = x => x ? "sí" : "no";
+  $("datosConexion").innerHTML = [
+    ["puente", si(conectado)], ["Launcher (Cortex)", si(p.cortex)],
+    ["app aprobada", p.esperando_aprobacion ? "esperando" : si(p.autorizado)],
+    ["casco", p.casco ? `${p.casco} · ${p.casco_estado||"—"}` : "—"],
+    ["flujos", p.flujos && p.flujos.length ? p.flujos.join(", ") : "—"]
+  ].map(([a,b])=>`<div class="dato"><span>${a}</span><span>${b}</span></div>`).join("")
+   + (S && S.mensaje ? `<div class="aviso">${S.mensaje}</div>` : "");
+}
+
+function pintarSelector(){
+  const sel = $("selCasco");
+  if(!S || S.cascos.length<2){ sel.classList.add("oculto"); return; }
+  sel.classList.remove("oculto");
+  const html = S.cascos.map(c=>`<button data-n="${c.n}" aria-pressed="${c.n===(cascoSel??S.cascos[0].n)}">${modelo(c)}</button>`).join("");
+  if(sel.dataset.html!==html){ sel.innerHTML=html; sel.dataset.html=html;
+    sel.querySelectorAll("button").forEach(b=>b.onclick=()=>{cascoSel=+b.dataset.n; objetivo=null; pintar();}); }
+}
+
+function pintar(){
+  const c = casco();
+  $("sim").classList.toggle("oculto", !(S && S.modo==="simulacion"));
+  $("modelo").textContent = c ? `${modelo(c)} · ${c.canales.length} canales` : "—";
+  if(nivelesListos(c) && c.valido){ if(!quietoDesde) quietoDesde = performance.now(); } else quietoDesde = 0;
+  pintarEstado(c); pintarSelector();
+  let resaltar = null;
+  if(modo==="asistente"){
+    if(pasoActual()===5){ elegirObjetivo(c); resaltar = objetivo; }
+    pintarAsistente(c);
+  } else pintarAvanzado(c);
+  pintarMapa(c, resaltar);
+}
+
+function enlazar(){
+  const b1=$("bColocado"); if(b1) b1.onclick=()=>{colocarListo=true; pintar();};
+  const b2=$("bSaltar"); if(b2) b2.onclick=()=>{ const c=casco(); if(!c) return;
+    const resto=c.canales.filter((ch,i)=>ch!==objetivo && c.cq[i]<3); objetivo=resto[0]||null; objetivoBienDesde=0; pintar(); };
+  const b3=$("bIrAvan"); if(b3) b3.onclick=()=>ponerModo("avanzado");
+}
+
+function ponerModo(m){
+  modo = m;
+  $("bAsis").setAttribute("aria-pressed", m==="asistente");
+  $("bAvan").setAttribute("aria-pressed", m==="avanzado");
+  ["vAsis","vTarjeta"].forEach(id=>$(id).classList.toggle("oculto", m!=="asistente"));
+  ["vContacto","vCasco","vBandas","vConexion"].forEach(id=>$(id).classList.toggle("oculto", m!=="avanzado"));
+  $("tarjeta").dataset.html=""; pintar();
+}
+$("bAsis").onclick=()=>ponerModo("asistente");
+$("bAvan").onclick=()=>ponerModo("avanzado");
+document.addEventListener("keydown", e=>{
+  if(e.target.tagName==="INPUT") return;
+  if(e.key==="1") ponerModo("asistente");
+  if(e.key==="2") ponerModo("avanzado");
+});
+const q = new URLSearchParams(location.search);
+if(q.get("modo")==="avanzado") ponerModo("avanzado"); else pintar();
+conectar();
+</script>
+</body>
+</html>
