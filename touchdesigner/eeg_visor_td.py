@@ -17,7 +17,7 @@
 #  Escrito para TouchDesigner 2025. Volver a correrlo reemplaza el componente.
 # =====================================================================================
 
-VERSION = '0.1'
+VERSION = '0.2'
 NAME = 'eeg_visor'
 FAILS = []
 
@@ -397,6 +397,14 @@ def onCook(scriptOp):
 			pass
 '''
 
+CB_CUADRO = r'''# recalcula el visor y los datos en cada cuadro (los Script OP solos no lo hacen)
+def onFrameStart(frame):
+	if parent.eeg.par.Activo.eval():
+		op('visor').cook(force=True)
+		op('datos').cook(force=True)
+	return
+'''
+
 # =====================================================================================
 #  CONSTRUCCIÓN
 # =====================================================================================
@@ -479,6 +487,10 @@ quitar_callbacks_auto(c, 'datos')
 setv(dat, 'callbacks', expr="op('cb_datos')")
 o2 = c.create(outCHOP, 'out2'); place(o2, 3, 3)
 wire(dat, o2)
+
+ex = c.create(executeDAT, 'eeg_cuadro'); ex.text = CB_CUADRO; place(ex, 0, 5)
+setv(ex, 'framestart', True)
+setv(ex, 'active', True, opt=True)
 
 # ---------- informe ----------
 inf = c.create(textDAT, 'eeg_informe'); place(inf, 0, 4)

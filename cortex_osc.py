@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Alquimia EEG OSC v0.3.1 — vía A (Cortex)
+Alquimia EEG OSC v0.4 — vía A (Cortex)
 Puente entre los cascos Emotiv (Insight, EPOC+) y OSC para escena.
 
 Lee los flujos de Cortex (bandas, expresiones, métricas, movimiento, contacto),
@@ -76,29 +76,51 @@ def archivo_config() -> Path:
     return base / "AlquimiaEEGOSC" / "config.json"
 
 
+def leer_config():
+    try:
+        d = json.loads(archivo_config().read_text(encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def guardar_config(**cambios):
+    d = leer_config()
+    d.update(cambios)
+    f = archivo_config()
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+    try:
+        os.chmod(f, 0o600)
+    except OSError:
+        pass
+
+
 def leer_credenciales():
     """Primero el .env o las variables de entorno; si no, la configuración guardada desde el monitor."""
     cid = os.environ.get("EMOTIV_CLIENT_ID")
     sec = os.environ.get("EMOTIV_CLIENT_SECRET")
     if cid and sec:
         return cid.strip(), sec.strip()
-    try:
-        d = json.loads(archivo_config().read_text(encoding="utf-8"))
-        if d.get("client_id") and d.get("client_secret"):
-            return d["client_id"].strip(), d["client_secret"].strip()
-    except (OSError, ValueError):
-        pass
+    d = leer_config()
+    if d.get("client_id") and d.get("client_secret"):
+        return d["client_id"].strip(), d["client_secret"].strip()
     return None
 
 
+def destino_valido(texto):
+    """'host:puerto' → (host, puerto) o None."""
+    host, _, puerto = str(texto).strip().rpartition(":")
+    host = host or "127.0.0.1"
+    if not puerto.isdigit() or not (1 <= int(puerto) <= 65535):
+        return None
+    if len(host) > 253 or not all(c.isalnum() or c in ".-" for c in host):
+        return None
+    return host, int(puerto)
+
+
 def guardar_credenciales(cid, sec):
-    f = archivo_config()
-    f.parent.mkdir(parents=True, exist_ok=True)
-    f.write_text(json.dumps({"client_id": cid.strip(), "client_secret": sec.strip()}), encoding="utf-8")
-    try:
-        os.chmod(f, 0o600)
-    except OSError:
-        pass
+    guardar_config(client_id=cid.strip(), client_secret=sec.strip())
     # lo nuevo manda sobre un .env viejo durante esta sesión
     os.environ["EMOTIV_CLIENT_ID"] = cid.strip()
     os.environ["EMOTIV_CLIENT_SECRET"] = sec.strip()
@@ -341,10 +363,10 @@ class Casco:
 # ---------------------------------------------------------------------------
 class Salida:
     def __init__(self, destinos, grabar=None):
+        self.destinos = []
         self.clientes = []
-        for d in destinos:
-            host, _, puerto = d.rpartition(":")
-            self.clientes.append(SimpleUDPClient(host or "127.0.0.1", int(puerto)))
+        self.configurar(destinos)
+        self.enviados = 0
         self.cuadro = []
         self.archivo = None
         if grabar:
@@ -352,9 +374,24 @@ class Salida:
             self.archivo = open(grabar, "a", encoding="utf-8")
             log("Grabando en", grabar)
 
+    def configurar(self, destinos):
+        nuevos, clientes = [], []
+        for d in destinos:
+            hp = destino_valido(d)
+            if hp and f"{hp[0]}:{hp[1]}" not in nuevos:
+                nuevos.append(f"{hp[0]}:{hp[1]}")
+                clientes.append(SimpleUDPClient(*hp))
+        if not nuevos:
+            nuevos, clientes = ["127.0.0.1:9200"], [SimpleUDPClient("127.0.0.1", 9200)]
+        self.destinos, self.clientes = nuevos, clientes   # se reemplazan de una vez
+
     def send(self, addr, args):
         for c in self.clientes:
-            c.send_message(addr, args)
+            try:
+                c.send_message(addr, args)
+            except OSError:
+                pass   # un destino caído no detiene a los demás
+        self.enviados += 1
         self.cuadro.append([addr, args])
 
     def cerrar_cuadro(self, t):
@@ -368,10 +405,12 @@ class Salida:
 
 
 async def bucle_salida(cascos, out, hz, estado):
-    periodo = 1.0 / hz
+    estado.setdefault("hz", hz)
     t0 = time.monotonic()
     seq = 0
     while True:
+        hz = max(1, min(120, int(estado["hz"])))
+        periodo = 1.0 / hz
         ahora = time.monotonic()
         out.send("/eeg/frame", [seq, float(ahora - t0), len(cascos)])
         if seq % hz == 0:
@@ -598,7 +637,9 @@ async def modo_cortex(args, out, cascos, estado):
 # Monitor de contacto (página local con asistente y modo avanzado)
 # ---------------------------------------------------------------------------
 class Monitor:
-    def __init__(self, cascos, estado, puerto, modo):
+    def __init__(self, cascos, estado, puerto, modo, out=None):
+        self.out = out
+        self._env = (0, time.monotonic(), 0.0)
         self.cascos = cascos
         self.estado = estado
         self.puerto = puerto
@@ -611,6 +652,7 @@ class Monitor:
         import webbrowser
         import websockets
         html = carpeta_recursos() / "monitor.html"
+        monitor = self
         puerto_ws = self.puerto + 1
 
         class Pagina(http.server.BaseHTTPRequestHandler):
@@ -628,18 +670,28 @@ class Monitor:
             def do_POST(self_):
                 # El encabezado propio obliga al navegador a pedir permiso (CORS) a otras páginas,
                 # así que solo el monitor puede escribir aquí.
-                if self_.path != "/credenciales" or self_.headers.get("X-Alquimia") != "1":
+                if self_.path not in ("/credenciales", "/osc") or self_.headers.get("X-Alquimia") != "1":
                     self_.send_error(403)
                     return
                 try:
                     n = int(self_.headers.get("Content-Length", "0"))
                     d = json.loads(self_.rfile.read(min(n, 4096)) or b"{}")
-                    cid, sec = str(d.get("client_id", "")).strip(), str(d.get("client_secret", "")).strip()
-                    if len(cid) < 8 or len(sec) < 8:
-                        raise ValueError
-                    guardar_credenciales(cid, sec)
+                    if self_.path == "/credenciales":
+                        cid, sec = str(d.get("client_id", "")).strip(), str(d.get("client_secret", "")).strip()
+                        if len(cid) < 8 or len(sec) < 8:
+                            raise ValueError
+                        guardar_credenciales(cid, sec)
+                    else:
+                        lista = [x for x in d.get("destinos", []) if destino_valido(x)][:8]
+                        hz = int(d.get("hz", monitor.estado.get("hz", 30)))
+                        if not lista or not (1 <= hz <= 120):
+                            raise ValueError
+                        monitor.out.configurar(lista)
+                        monitor.estado["hz"] = hz
+                        guardar_config(osc={"destinos": monitor.out.destinos, "hz": hz})
+                        log("Salida OSC:", ", ".join(monitor.out.destinos), f"a {hz} Hz")
                     ok, cuerpo = 200, b'{"ok":true}'
-                except (ValueError, OSError):
+                except (ValueError, TypeError, OSError):
                     ok, cuerpo = 400, b'{"ok":false}'
                 self_.send_response(ok)
                 self_.send_header("Content-Type", "application/json")
@@ -672,7 +724,15 @@ class Monitor:
 
     def instantanea(self):
         ahora = time.monotonic()
+        osc = None
+        if self.out is not None:
+            n0, t0, r = self._env
+            if ahora - t0 >= 1.0:
+                r = (self.out.enviados - n0) / (ahora - t0)
+                self._env = (self.out.enviados, ahora, r)
+            osc = {"destinos": self.out.destinos, "hz": self.estado.get("hz", 30), "por_segundo": round(r)}
         return {
+            "osc": osc,
             "modo": self.modo, "status": self.estado["status"],
             "mensaje": self.estado.get("mensaje", ""), "pasos": self.estado["pasos"],
             "cascos": [c.resumen(ahora) for c in sorted(self.cascos.values(), key=lambda c: c.n)],
@@ -761,7 +821,13 @@ async def principal(args):
     grabar = None
     if args.grabar and not args.reproducir:
         grabar = str(Path("grabaciones") / f"eeg_{datetime.now():%Y%m%d_%H%M%S}.jsonl")
+    cfg_osc = leer_config().get("osc") or {}
+    if not args.destino_cli and cfg_osc.get("destinos"):
+        args.destino = cfg_osc["destinos"]
+    if not args.hz_cli and cfg_osc.get("hz"):
+        args.hz = int(cfg_osc["hz"])
     out = Salida(args.destino, grabar)
+    args.destino = out.destinos
     try:
         if args.reproducir:
             await modo_reproducir(args, out)
@@ -771,7 +837,8 @@ async def principal(args):
                   "pasos": {"credenciales": False, "cortex": False, "esperando_aprobacion": False, "autorizado": False,
                             "casco": "", "casco_estado": "", "flujos": []}}
         if args.monitor:
-            mon = Monitor(cascos, estado, args.monitor_puerto, "simulacion" if args.simular else "cortex")
+            estado["hz"] = args.hz
+            mon = Monitor(cascos, estado, args.monitor_puerto, "simulacion" if args.simular else "cortex", out)
             await mon.iniciar(abrir=not args.no_abrir)
         tarea = asyncio.create_task(bucle_salida(cascos, out, args.hz, estado))
         try:
@@ -791,7 +858,7 @@ def main():
     ap = argparse.ArgumentParser(description="Puente EEG (Emotiv Cortex) → OSC")
     ap.add_argument("--destino", action="append",
                     help="host:puerto de destino OSC (se puede repetir). Por defecto 127.0.0.1:9200")
-    ap.add_argument("--hz", type=int, default=30, help="tasa de salida OSC (30 por defecto)")
+    ap.add_argument("--hz", type=int, default=None, help="tasa de salida OSC (30 por defecto)")
     ap.add_argument("--suavizado", type=float, default=0.3, help="0–1; más bajo = más suave")
     ap.add_argument("--casco", help="usar solo el casco cuyo id contenga este texto (p. ej. INSIGHT)")
     ap.add_argument("--crudo", action="store_true", help="enviar también el EEG crudo en /eeg/{casco}/raw")
@@ -807,13 +874,16 @@ def main():
                     help="sesiones que se piden a Cortex al autorizar (debit). 10 por defecto")
     ap.add_argument("--url", default=CORTEX_URL, help=argparse.SUPPRESS)
     args = ap.parse_args()
+    args.destino_cli = bool(args.destino)
     args.destino = args.destino or ["127.0.0.1:9200"]
+    args.hz_cli = args.hz is not None
+    args.hz = args.hz or 30
     if CONGELADO and len(sys.argv) == 1:
         args.monitor = True  # doble clic en el .exe: abre el monitor
     if CONGELADO:
         os.chdir(carpeta_programa())  # las grabaciones quedan junto al .exe
     if not args.reproducir:
-        log("Alquimia EEG OSC v0.3.1 · Ctrl+C o cerrar esta ventana para salir.")
+        log("Alquimia EEG OSC v0.4 · Ctrl+C o cerrar esta ventana para salir.")
     try:
         asyncio.run(principal(args))
     except KeyboardInterrupt:

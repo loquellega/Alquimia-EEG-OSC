@@ -1,6 +1,6 @@
 # Alquimia EEG OSC
 
-**v0.3.1** · Puente entre cascos EEG Emotiv (Insight, EPOC+) y OSC para teatro, danza y música, con monitor de contacto.
+**v0.4** · Puente entre cascos EEG Emotiv (Insight, EPOC+) y OSC para teatro, danza y música, con monitor de contacto.
 
 ![Monitor de contacto, asistente](docs/capturas/03-asistente-electrodos.png)
 
@@ -72,7 +72,15 @@ Para cambiarlos, borra ese archivo y vuelve a abrir el programa.
 | Modo | Para qué |
 |---|---|
 | **asistente** (tecla 1) | guía paso a paso: Launcher → aprobar la app → encender el casco → colocarlo → electrodo por electrodo (marca con un anillo el que falta y da pistas de dónde va) → quietud → listo |
-| **avanzado** (tecla 2) | contacto por canal, batería, intensidad inalámbrica, calidad global, paquetes por segundo, bandas, parpadeo y estado de la conexión |
+| **avanzado** (tecla 2) | **salida OSC** (destinos y Hz), contacto por canal, batería, intensidad inalámbrica, calidad global, paquetes por segundo, bandas, parpadeo y estado de la conexión |
+
+### Salida OSC
+En el modo avanzado, la ventana **salida OSC** muestra a dónde se envía y cuántos mensajes por segundo salen. Puedes:
+- cambiar el destino o agregar varios (**+ destino**), con formato `IP:puerto`. `127.0.0.1` es la misma computadora; para otra máquina usa su IP en la red, por ejemplo `192.168.1.20:9200`;
+- cambiar la tasa (Hz);
+- pulsar **aplicar**: el cambio es inmediato y se guarda para la próxima vez.
+
+Lo que pongas con `--destino` o `--hz` en la terminal manda sobre lo guardado.
 
 Colores: **verde** bueno · **amarillo** aceptable · **naranja** pobre · **rojo** malo · **gris** sin señal. Desde amarillo ya cuenta como conectado.
 

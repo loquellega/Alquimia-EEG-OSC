@@ -48,6 +48,7 @@ main{display:grid;grid-template-columns:minmax(360px,1fr) 440px;gap:16px;padding
 .ventana>.barra{height:var(--a-bar-h);display:flex;align-items:center;padding:0 var(--a-pad);background:var(--a-bar);color:var(--a-ink);font-size:var(--a-size-sm);border-bottom:1px solid var(--a-line);letter-spacing:.06em;text-transform:uppercase}
 .ventana>.barra .extra{margin-left:auto;text-transform:none;letter-spacing:0;color:var(--a-ink-dim)}
 .ventana>.cuerpo{padding:12px var(--a-pad);overflow:auto;scrollbar-width:thin;scrollbar-color:var(--a-line-ctl) transparent}
+.columna>.ventana{flex:none}
 .columna{display:flex;flex-direction:column;gap:12px;min-height:0;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--a-line-ctl) transparent}
 
 /* cabeza */
@@ -100,7 +101,13 @@ svg#mapa{width:100%;height:100%;max-height:72vh}
 .campo input{height:var(--a-ctl-h);background:var(--a-bg);color:var(--a-ink-strong);border:1px solid var(--a-line-ctl);border-radius:var(--a-radius);padding:0 10px;font:13px var(--a-font);width:100%;transition:border-color var(--a-t)}
 .campo input:focus{outline:none;border-color:var(--a-accent)}
 .con-boton{display:flex;gap:6px}.con-boton button{flex:none}
-.instr{margin:6px 0 10px;padding-left:18px}.instr li{margin:3px 0}
+.instr{margin:6px 0 10px;padding-left:18px}
+.campo.en-linea{flex-direction:row;align-items:center;gap:6px;margin:0}
+.campo.en-linea input{width:64px}
+.dest{display:flex;gap:6px;margin-bottom:6px}
+.dest input{flex:1;height:var(--a-ctl-h);background:var(--a-bg);color:var(--a-ink-strong);border:1px solid var(--a-line-ctl);border-radius:var(--a-radius);padding:0 10px;font:13px var(--a-font)}
+.dest input:focus{outline:none;border-color:var(--a-accent)}
+.dest input.mal{border-color:var(--q1)}.instr li{margin:3px 0}
 code{color:var(--a-ink-strong);background:var(--a-bar);padding:1px 5px;border-radius:var(--a-radius-sm)}
 .oculto{display:none!important}
 footer{position:fixed;right:16px;bottom:8px;color:#5c5c5c;font-size:10px;padding-bottom:env(safe-area-inset-bottom)}
@@ -159,6 +166,19 @@ footer{position:fixed;right:16px;bottom:8px;color:#5c5c5c;font-size:10px;padding
     </section>
 
     <!-- AVANZADO -->
+    <section class="ventana oculto" id="vOsc">
+      <div class="barra">salida OSC <span class="extra" id="oscRitmo">—</span></div>
+      <div class="cuerpo">
+        <div id="oscLista"></div>
+        <div class="acciones">
+          <button id="bOscMas" type="button">+ destino</button>
+          <label class="campo en-linea">Hz<input id="oscHz" type="number" min="1" max="120" step="1"></label>
+          <button class="primario" id="bOscAplicar" type="button">aplicar</button>
+          <span id="oscEstado" class="dim" style="align-self:center"></span>
+        </div>
+        <p class="dim" style="margin:8px 0 0">IP:puerto de cada programa que recibe. 127.0.0.1 es esta misma computadora; para otra, usa su IP en la red (p. ej. 192.168.1.20:9200).</p>
+      </div>
+    </section>
     <section class="ventana oculto" id="vContacto">
       <div class="barra">contacto por canal <span class="extra">niveles 0–4</span></div>
       <div class="cuerpo" id="filasContacto"></div>
@@ -282,7 +302,8 @@ function tarjeta(i){
       return `<div class="aviso listo"><b>Conectado. Listo para escena.</b></div>
         <div class="dato"><span>calidad global</span><span>${q} %</span></div>
         <div class="dato"><span>batería</span><span>${b}</span></div>
-        <p style="margin-top:10px">En TouchDesigner o Isadora, <code>/eeg/${c?c.n:2}/valid</code> vale 1 mientras la señal es confiable.</p>
+        <div class="dato"><span>enviando OSC a</span><span>${S && S.osc ? S.osc.destinos.join(", ") : "—"}</span></div>
+        <p style="margin-top:10px">En TouchDesigner o Isadora, <code>/eeg/${c?c.n:2}/valid</code> vale 1 mientras la señal es confiable. Para cambiar el destino OSC, ve al modo avanzado.</p>
         <div class="acciones"><button class="primario" id="bIrAvan">ir al modo avanzado</button></div>`;
     }
   }
@@ -396,7 +417,7 @@ function pintar(){
   if(modo==="asistente"){
     if(pasoActual()===6){ elegirObjetivo(c); resaltar = objetivo; }
     pintarAsistente(c);
-  } else pintarAvanzado(c);
+  } else { pintarAvanzado(c); pintarOsc(); }
   pintarMapa(c, resaltar);
 }
 
@@ -419,12 +440,45 @@ async function guardarCred(){
   }catch(e){ est.textContent="No hay conexión con el puente."; }
 }
 
+let oscEditado = false;
+function filaDestino(v){
+  const d = document.createElement("div"); d.className="dest";
+  d.innerHTML = `<input value="${v||""}" placeholder="127.0.0.1:9200" spellcheck="false" aria-label="destino OSC"><button type="button" title="quitar">×</button>`;
+  d.querySelector("input").oninput = ()=>{ oscEditado = true; };
+  d.querySelector("button").onclick = ()=>{ d.remove(); oscEditado = true; };
+  $("oscLista").appendChild(d);
+}
+const reDestino = /^([A-Za-z0-9.\-]+:)?\d{1,5}$/;
+function pintarOsc(){
+  if(!S || !S.osc) { $("oscRitmo").textContent = "—"; return; }
+  $("oscRitmo").textContent = `${S.osc.por_segundo} mensajes/s`;
+  if(!oscEditado){
+    const actual = [...$("oscLista").querySelectorAll("input")].map(i=>i.value).join(",");
+    if(actual !== S.osc.destinos.join(",")){ $("oscLista").innerHTML=""; S.osc.destinos.forEach(filaDestino); }
+    if(document.activeElement !== $("oscHz")) $("oscHz").value = S.osc.hz;
+  }
+}
+$("bOscMas").onclick = ()=>{ filaDestino(""); oscEditado = true; };
+$("oscHz").oninput = ()=>{ oscEditado = true; };
+$("bOscAplicar").onclick = async ()=>{
+  const ins = [...$("oscLista").querySelectorAll("input")];
+  let ok = true;
+  const lista = ins.map(i=>{ const v=i.value.trim(); const bien = reDestino.test(v) && +v.split(":").pop()<=65535; i.classList.toggle("mal", !bien); if(!bien) ok=false; return v; });
+  const hz = +$("oscHz").value;
+  if(!ok || !lista.length || !(hz>=1 && hz<=120)){ $("oscEstado").textContent = "Revisa los destinos (IP:puerto) y los Hz (1–120)."; return; }
+  try{
+    const r = await fetch("/osc",{method:"POST",headers:{"Content-Type":"application/json","X-Alquimia":"1"},body:JSON.stringify({destinos:lista,hz})});
+    $("oscEstado").textContent = r.ok ? "Aplicado y guardado." : "No se pudo aplicar.";
+    if(r.ok) oscEditado = false;
+  }catch(e){ $("oscEstado").textContent = "No hay conexión con el puente."; }
+};
+
 function ponerModo(m){
   modo = m;
   $("bAsis").setAttribute("aria-pressed", m==="asistente");
   $("bAvan").setAttribute("aria-pressed", m==="avanzado");
   ["vAsis","vTarjeta"].forEach(id=>$(id).classList.toggle("oculto", m!=="asistente"));
-  ["vContacto","vCasco","vBandas","vConexion"].forEach(id=>$(id).classList.toggle("oculto", m!=="avanzado"));
+  ["vOsc","vContacto","vCasco","vBandas","vConexion"].forEach(id=>$(id).classList.toggle("oculto", m!=="avanzado"));
   $("tarjeta").dataset.html=""; pintar();
 }
 $("bAsis").onclick=()=>ponerModo("asistente");
