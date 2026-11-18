@@ -1,6 +1,6 @@
 # Alquimia EEG OSC
 
-**v0.2** · Puente entre cascos EEG Emotiv (Insight, EPOC+) y OSC para teatro, danza y música, con monitor de contacto.
+**v0.3** · Puente entre cascos EEG Emotiv (Insight, EPOC+) y OSC para teatro, danza y música, con monitor de contacto.
 
 ![Monitor de contacto, asistente](docs/capturas/03-asistente-electrodos.png)
 
@@ -22,45 +22,42 @@ Especificación OSC completa: [docs/especificacion-osc.md](docs/especificacion-o
 
 ## Instalación paso a paso
 
-### 1. Python
-- **Windows:** descarga Python 3.12 de python.org. En el instalador, marca **«Add python.exe to PATH»**. Para comprobarlo, abre *Símbolo del sistema* y escribe `python --version`.
-- **Mac:** descarga Python 3.12 de python.org e instálalo. Para comprobarlo, abre *Terminal* y escribe `python3 --version`. En Mac usa `python3` y `pip3` en lugar de `python` y `pip` en todos los pasos.
+### Opción A · Ejecutable (recomendado, sin instalar Python)
 
-### 2. Este programa
-- En GitHub: botón verde **Code → Download ZIP**, y descomprímelo donde quieras (por ejemplo, en Documentos).
-- O con git: `git clone https://github.com/loquellega/alquimia-eeg-osc`
+1. **EMOTIV Launcher:** descárgalo de https://www.emotiv.com/pages/download-emotiv-launcher (o en emotiv.com → My Account → Downloads → *Emotiv-Installer-Win*). Instálalo, ábrelo e inicia sesión con tu cuenta.
+2. **Tu app de Cortex** (una sola vez): emotiv.com → **My Account → Cortex Apps → Register new**. Ponle nombre, deja **apagado** «Enable EEG for Professional devices» y registra. Guarda el **Client ID** y el **Client Secret**: el Secret solo se muestra una vez.
+3. **Descarga el programa** desde **[Releases](https://github.com/loquellega/alquimia-eeg-osc/releases)**:
+   - Windows: `AlquimiaEEGOSC-windows.exe`
+   - Mac (Apple Silicon): `AlquimiaEEGOSC-mac.zip`
+4. **Ábrelo con doble clic.** Se abre una ventana de texto (déjala abierta; es el puente) y el monitor en el navegador.
+   - Windows puede avisar «Windows protegió su PC», porque el programa no está firmado: **Más información → Ejecutar de todas formas**.
+   - Mac: clic derecho → **Abrir** la primera vez.
+5. **En el monitor, pega el Client ID y el Client Secret** y pulsa *guardar*. Se guardan en tu computadora y no se vuelven a pedir.
+6. **Aprueba la app** en el Launcher cuando lo pida (solo la primera vez).
+7. Enciende el casco y **sigue el asistente** hasta que diga «Conectado. Listo para escena.»
 
-### 3. Dependencias
-Abre la terminal **dentro de la carpeta** del programa. En Windows: abre la carpeta, escribe `cmd` en la barra de direcciones y pulsa Enter. En Mac: clic derecho en la carpeta → *Nuevo Terminal en la carpeta*. Luego:
-```
-pip install -r requirements.txt
-```
+Para cerrar, cierra la ventana de texto. Las grabaciones (`--grabar`) quedan junto al ejecutable.
 
-### 4. Tu app de Cortex
-1. Entra a emotiv.com → **My Account → Cortex Apps → Register new**.
-2. Ponle nombre, deja **apagado** «Enable EEG for Professional devices» y registra.
-3. Copia el **Client ID** y el **Client Secret**. El Secret solo se muestra una vez.
-4. En la carpeta del programa, copia `.env.example` como `.env` y pega ahí los dos valores. El `.env` nunca se sube a GitHub.
+### Opción B · Desde el código, con Python
 
-> En Windows, el Explorador oculta las extensiones. Si no puedes nombrar el archivo `.env`, ábrelo con el Bloc de notas y usa *Guardar como*, con el nombre `".env"` (con comillas) y el tipo «Todos los archivos».
-
-### 5. EMOTIV Launcher
-Descárgalo de emotiv.com, instálalo y entra con tu cuenta. Déjalo abierto mientras usas el puente.
-
-### 6. Primera prueba, sin casco
-```
-python cortex_osc.py --simular --monitor
-```
-Se abre el monitor en el navegador con un Insight simulado: verás cómo los electrodos pasan de gris a verde. Si quieres, abre TouchDesigner o Isadora y revisa que lleguen mensajes al puerto 9200. Ctrl+C para salir.
-
-### 7. Con el casco
-1. Carga el casco y enciéndelo (luz blanca). Activa el Bluetooth de la computadora.
-2. Corre:
+1. **Python 3.12** de python.org. En Windows, marca **«Add python.exe to PATH»** al instalar. En Mac, usa `python3` y `pip3` en lugar de `python` y `pip`.
+2. **Descarga el repo** (botón verde **Code → Download ZIP**) o clónalo: `git clone https://github.com/loquellega/alquimia-eeg-osc`
+3. **Abre una terminal dentro de la carpeta** (en Windows: escribe `cmd` en la barra de direcciones de la carpeta; en Mac: clic derecho → *Nuevo Terminal en la carpeta*) y corre:
    ```
-   python cortex_osc.py --monitor
+   pip install -r requirements.txt
    ```
-3. La primera vez, el Launcher te pide **aprobar la app**. Apruébala.
-4. Sigue el asistente del monitor hasta que diga **«Conectado. Listo para escena.»**
+4. Instala el **EMOTIV Launcher** y registra tu app de Cortex (pasos 1 y 2 de la opción A).
+5. Prueba sin casco: `python cortex_osc.py --simular --monitor`
+6. Con el casco: `python cortex_osc.py --monitor`. Pega tus datos en el monitor y sigue el asistente.
+
+> Opcional: en lugar de escribirlos en el monitor, puedes poner `EMOTIV_CLIENT_ID` y `EMOTIV_CLIENT_SECRET` en un archivo `.env` (copia `.env.example`). El `.env` nunca se sube a GitHub.
+
+### Dónde se guardan tus datos de Cortex
+- Windows: `%APPDATA%\AlquimiaEEGOSC\config.json`
+- Mac: `~/Library/Application Support/AlquimiaEEGOSC/config.json`
+- Linux: `~/.config/AlquimiaEEGOSC/config.json`
+
+Para cambiarlos, borra ese archivo y vuelve a abrir el programa.
 
 ## ¿Cómo sé que está conectado?
 
@@ -85,7 +82,7 @@ El monitor se abre en `http://localhost:9201` y usa también el puerto 9202. Con
 
 | Opción | Qué hace |
 |---|---|
-| `--monitor` | abre el monitor de contacto (`--no-abrir` para no abrir el navegador solo) |
+| `--monitor` | abre el monitor de contacto (`--no-abrir` para no abrir el navegador solo). El ejecutable lo abre siempre con doble clic |
 | `--simular` | datos sintéticos sin casco |
 | `--grabar` | guarda la sesión en `grabaciones/eeg_FECHA.jsonl` |
 | `--reproducir ARCHIVO` | reproduce una grabación (`--bucle` para repetir) |
@@ -109,7 +106,7 @@ Ejemplo, en función: `python cortex_osc.py --monitor --grabar --destino 127.0.0
 | «Esperando el EMOTIV Launcher…» | abre el Launcher e inicia sesión; el puente sigue solo |
 | «Aprueba la app…» | acepta la solicitud en el Launcher |
 | «Buscando el casco…» | enciéndelo, revisa la batería y el Bluetooth |
-| «No se pudo autorizar» | revisa el Client ID y el Secret en el `.env` |
+| «Cortex no aceptó los datos de la app» | revisa el Client ID y el Secret; el monitor te los vuelve a pedir |
 | «Los puertos 9201 y 9202 están ocupados» | ya hay otro puente abierto: ciérralo |
 | todos los electrodos en gris o rojo | revisa los sensores de referencia detrás de la oreja |
 
@@ -119,8 +116,10 @@ Ejemplo, en función: `python cortex_osc.py --monitor --grabar --destino 127.0.0
 |---|---|---|
 | ![Asistente](docs/capturas/03-asistente-electrodos.png) | ![Listo](docs/capturas/04-asistente-listo.png) | ![Avanzado](docs/capturas/05-avanzado.png) |
 | Asistente: electrodo por electrodo · *Wizard: electrode by electrode* | Asistente: conectado · *Wizard: connected* | Modo avanzado · *Advanced mode* |
-| ![Celular](docs/capturas/06-movil.png) | ![Conexión](docs/capturas/01-conexion-cortex.png) | ![OSC](docs/capturas/02-mensajes-osc.png) |
-| Monitor en celular · *Monitor on a phone* | Conexión con Cortex · *Connecting to Cortex* | Mensajes OSC (simulación) · *OSC messages (simulation)* |
+| ![Datos de la app](docs/capturas/07-datos-de-la-app.png) | ![Celular](docs/capturas/06-movil.png) | ![Conexión](docs/capturas/01-conexion-cortex.png) |
+| Asistente: datos de la app · *Wizard: Cortex app details* | Monitor en celular · *Monitor on a phone* | Conexión con Cortex · *Connecting to Cortex* |
+| ![OSC](docs/capturas/02-mensajes-osc.png) | | |
+| Mensajes OSC (simulación) · *OSC messages (simulation)* | | |
 
 ---
 
@@ -131,9 +130,9 @@ Ejemplo, en función: `python cortex_osc.py --monitor --grabar --destino 127.0.0
 
 It includes a **contact monitor** in the browser: a top view of the head with each electrode coloured by contact quality, a step-by-step **wizard** to fit the headset, and an **advanced** view with all readings.
 
-**Install:** Python 3.10+, `pip install -r requirements.txt`, copy `.env.example` to `.env` with your Cortex app Client ID and Secret (emotiv.com → My Account → Cortex Apps), and install the EMOTIV Launcher.
+**Install:** download `AlquimiaEEGOSC-windows.exe` or `AlquimiaEEGOSC-mac.zip` from [Releases](https://github.com/loquellega/alquimia-eeg-osc/releases) and install the EMOTIV Launcher. Register a Cortex app (emotiv.com → My Account → Cortex Apps) and paste its Client ID and Secret into the monitor the first time. From source: Python 3.10+, `pip install -r requirements.txt`.
 
-**Run:** `python cortex_osc.py --monitor`, approve the app in the Launcher the first time, and follow the wizard until it says it is connected. Use `--simular` to test without a headset, `--grabar` to record a session and `--reproducir FILE` to play it back. OSC goes to `127.0.0.1:9200` by default; `/eeg/{n}/valid` is 1 while the signal is reliable.
+**Run:** double-click the executable (or `python cortex_osc.py --monitor`), approve the app in the Launcher the first time, and follow the wizard until it says it is connected. Use `--simular` to test without a headset, `--grabar` to record a session and `--reproducir FILE` to play it back. OSC goes to `127.0.0.1:9200` by default; `/eeg/{n}/valid` is 1 while the signal is reliable.
 
 Full OSC specification (in Spanish): [docs/especificacion-osc.md](docs/especificacion-osc.md).
 

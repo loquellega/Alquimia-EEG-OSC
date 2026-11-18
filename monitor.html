@@ -96,6 +96,11 @@ svg#mapa{width:100%;height:100%;max-height:72vh}
 .dato span:last-child{color:var(--a-ink-strong)}
 .parpadeo{display:inline-block;width:10px;height:10px;border-radius:50%;border:1px solid var(--a-line-ctl);vertical-align:-1px}
 .parpadeo.on{background:var(--a-ink-strong);border-color:var(--a-ink-strong)}
+.campo{display:flex;flex-direction:column;gap:4px;margin:8px 0;color:var(--a-ink-dim);font-size:var(--a-size-sm)}
+.campo input{height:var(--a-ctl-h);background:var(--a-bg);color:var(--a-ink-strong);border:1px solid var(--a-line-ctl);border-radius:var(--a-radius);padding:0 10px;font:13px var(--a-font);width:100%;transition:border-color var(--a-t)}
+.campo input:focus{outline:none;border-color:var(--a-accent)}
+.con-boton{display:flex;gap:6px}.con-boton button{flex:none}
+.instr{margin:6px 0 10px;padding-left:18px}.instr li{margin:3px 0}
 code{color:var(--a-ink-strong);background:var(--a-bar);padding:1px 5px;border-radius:var(--a-radius-sm)}
 .oculto{display:none!important}
 footer{position:fixed;right:16px;bottom:8px;color:#5c5c5c;font-size:10px;padding-bottom:env(safe-area-inset-bottom)}
@@ -219,6 +224,7 @@ function conectar(){
 // ---------- pasos del asistente ----------
 const PASOS = [
   {t:"Puente activo", ok:()=>conectado},
+  {t:"Datos de tu app de Cortex", ok:()=>S && S.pasos.credenciales},
   {t:"EMOTIV Launcher", ok:()=>S && S.pasos.cortex},
   {t:"Aprobar la app", ok:()=>S && S.pasos.autorizado},
   {t:"Casco encendido y conectado", ok:()=>{const c=casco(); return S && S.pasos.casco_estado==="conectado" && c && c.edad!=null && c.edad<1.5;}},
@@ -232,22 +238,31 @@ function tarjeta(i){
   const c = casco(), epoc = c && c.n===1;
   const msg = S && S.mensaje ? `<div class="aviso">${S.mensaje}</div>` : "";
   switch(i){
-    case 0: return `<h2>Inicia el puente</h2><p>Esta página se alimenta del puente. En la terminal, dentro de la carpeta del proyecto:</p>
+    case 0: return `<h2>Inicia el puente</h2><p>Esta página se alimenta del puente. Abre <b>AlquimiaEEGOSC</b> (doble clic) o, desde la terminal:</p>
       <p><code>python cortex_osc.py --monitor</code></p><p class="dim">Si ya lo iniciaste, espera unos segundos: la página se reconecta sola.</p>`;
-    case 1: return `<h2>Abre el EMOTIV Launcher</h2><p>Ábrelo e inicia sesión con tu cuenta de Emotiv. El puente lo está esperando y sigue solo en cuanto lo encuentra.</p>${msg}`;
-    case 2: return `<h2>Aprueba la app</h2><p>En el Launcher aparece una solicitud de <b>Alquimia EEG OSC</b>. Apruébala. Solo se pide la primera vez.</p>${msg}`;
-    case 3: return `<h2>Enciende y conecta el casco</h2><ul>
+    case 1: return `<h2>Datos de tu app de Cortex</h2>
+      <p>Se piden una sola vez y se guardan en esta computadora.</p>
+      <ol class="instr"><li>Entra a emotiv.com → <b>My Account → Cortex Apps</b>.</li>
+      <li>Copia el <b>Client ID</b> de tu app (está en la tabla).</li>
+      <li>El <b>Client Secret</b> solo se mostró al registrar la app. Si no lo guardaste, registra una app nueva.</li></ol>
+      ${msg}
+      <label class="campo">Client ID<input id="cid" autocomplete="off" spellcheck="false"></label>
+      <label class="campo">Client Secret<span class="con-boton"><input id="csec" type="password" autocomplete="off" spellcheck="false"><button id="bVer" type="button" aria-pressed="false">ver</button></span></label>
+      <div class="acciones"><button class="primario" id="bGuardar">guardar</button><span id="estadoCred" class="dim" style="align-self:center"></span></div>`;
+    case 2: return `<h2>Abre el EMOTIV Launcher</h2><p>Ábrelo e inicia sesión con tu cuenta de Emotiv. El puente lo está esperando y sigue solo en cuanto lo encuentra.</p>${msg}`;
+    case 3: return `<h2>Aprueba la app</h2><p>En el Launcher aparece una solicitud de <b>Alquimia EEG OSC</b>. Apruébala. Solo se pide la primera vez.</p>${msg}`;
+    case 4: return `<h2>Enciende y conecta el casco</h2><ul>
       <li>Carga el casco si la batería está baja.</li>
       <li>Enciéndelo: debe prender la luz blanca.</li>
       <li>Activa el Bluetooth de la computadora (o conecta el USB Receiver).</li>
       <li>El puente lo busca y lo conecta solo; no hace falta emparejarlo a mano.</li></ul>${msg}`;
-    case 4: return `<h2>Colócate el casco</h2><ul>
+    case 5: return `<h2>Colócate el casco</h2><ul>
       ${epoc ? "<li>Moja bien las esponjas con solución salina antes de ponerlo.</li>" : ""}
       <li>${epoc ? "Desliza el casco desde atrás hacia adelante." : "Desliza el casco desde atrás; la banda va en la parte alta de la nuca."}</li>
       <li>Los dos sensores de la frente van sobre piel, a dos dedos de las cejas.</li>
       <li>Ajusta primero los <b>sensores de referencia</b> (detrás de la oreja): sin ellos ningún canal da lectura.</li></ul>
       <div class="acciones"><button class="primario" id="bColocado">ya está puesto</button></div>`;
-    case 5: {
+    case 6: {
       const ch = objetivo; if(!c || !ch) return `<h2>Electrodo por electrodo</h2><p class="dim">Esperando lecturas de contacto…</p>`;
       const k = c.canales.indexOf(ch), v = c.cq[k] ?? 0;
       const buenos = c.cq.filter(x=>x>=3).length;
@@ -261,7 +276,7 @@ function tarjeta(i){
         <p class="dim">${buenos} de ${c.cq.length} en verde o amarillo. Paso al siguiente en cuanto este llegue a aceptable.</p>
         <div class="acciones"><button id="bSaltar">saltar este</button></div>`;
     }
-    case 6: return `<h2>Quietud</h2><p>Todos los electrodos tienen contacto. Respira y quédate quieto cinco segundos para comprobar que la señal se sostiene.</p>`;
+    case 7: return `<h2>Quietud</h2><p>Todos los electrodos tienen contacto. Respira y quédate quieto cinco segundos para comprobar que la señal se sostiene.</p>`;
     default: {
       const q = c ? Math.round(c.calidad*100) : 0, b = c && c.bateria!=null ? Math.round(c.bateria*100)+" %" : "—";
       return `<div class="aviso listo"><b>Conectado. Listo para escena.</b></div>
@@ -308,6 +323,7 @@ function pintarEstado(c){
   const e = $("estado"), t = e.querySelector("span");
   e.className = "pastilla";
   if(!conectado){ t.textContent="sin puente"; e.classList.add("mal"); return; }
+  if(S && !S.pasos.credenciales){ t.textContent="faltan datos de la app"; e.classList.add("medio"); return; }
   if(!c || c.edad==null || c.edad>1.5){ t.textContent = S && S.pasos.cortex ? "sin datos del casco" : "esperando Launcher"; e.classList.add("medio"); return; }
   if(c.valido && nivelesListos(c)){ t.textContent="en vivo · conectado"; e.classList.add("vivo"); return; }
   if(c.valido){ t.textContent="en vivo · revisa contacto"; e.classList.add("medio"); return; }
@@ -320,7 +336,14 @@ function pintarAsistente(c){
     + `<li class="${i>=PASOS.length?"hecho actual":""}"><span class="num">${i>=PASOS.length?"✓":"·"}</span>Listo</li>`;
   $("pasoN").textContent = i>=PASOS.length ? "completo" : `paso ${i+1} de ${PASOS.length}`;
   const html = tarjeta(i);
-  if($("tarjeta").dataset.html !== html){ $("tarjeta").innerHTML = html; $("tarjeta").dataset.html = html; enlazar(); }
+  if($("tarjeta").dataset.html !== html){
+    const prev = {cid:$("cid")?.value, csec:$("csec")?.value, est:$("estadoCred")?.textContent};
+    $("tarjeta").innerHTML = html; $("tarjeta").dataset.html = html;
+    if($("cid") && prev.cid) $("cid").value = prev.cid;
+    if($("csec") && prev.csec) $("csec").value = prev.csec;
+    if($("estadoCred") && prev.est && !(S && S.mensaje)) $("estadoCred").textContent = prev.est;
+    enlazar();
+  }
   return i;
 }
 
@@ -346,7 +369,7 @@ function pintarAvanzado(c){
   const p = S ? S.pasos : {};
   const si = x => x ? "sí" : "no";
   $("datosConexion").innerHTML = [
-    ["puente", si(conectado)], ["Launcher (Cortex)", si(p.cortex)],
+    ["puente", si(conectado)], ["datos de la app", si(p.credenciales)], ["Launcher (Cortex)", si(p.cortex)],
     ["app aprobada", p.esperando_aprobacion ? "esperando" : si(p.autorizado)],
     ["casco", p.casco ? `${p.casco} · ${p.casco_estado||"—"}` : "—"],
     ["flujos", p.flujos && p.flujos.length ? p.flujos.join(", ") : "—"]
@@ -371,7 +394,7 @@ function pintar(){
   pintarEstado(c); pintarSelector();
   let resaltar = null;
   if(modo==="asistente"){
-    if(pasoActual()===5){ elegirObjetivo(c); resaltar = objetivo; }
+    if(pasoActual()===6){ elegirObjetivo(c); resaltar = objetivo; }
     pintarAsistente(c);
   } else pintarAvanzado(c);
   pintarMapa(c, resaltar);
@@ -382,6 +405,18 @@ function enlazar(){
   const b2=$("bSaltar"); if(b2) b2.onclick=()=>{ const c=casco(); if(!c) return;
     const resto=c.canales.filter((ch,i)=>ch!==objetivo && c.cq[i]<3); objetivo=resto[0]||null; objetivoBienDesde=0; pintar(); };
   const b3=$("bIrAvan"); if(b3) b3.onclick=()=>ponerModo("avanzado");
+  const bv=$("bVer"); if(bv) bv.onclick=()=>{ const v=$("csec").type==="password"; $("csec").type=v?"text":"password"; bv.setAttribute("aria-pressed",v); bv.textContent=v?"ocultar":"ver"; };
+  const bg=$("bGuardar"); if(bg) bg.onclick=guardarCred;
+}
+
+async function guardarCred(){
+  const cid=$("cid").value.trim(), sec=$("csec").value.trim(), est=$("estadoCred");
+  if(cid.length<8 || sec.length<8){ est.textContent="Faltan datos: pega los dos valores completos."; return; }
+  est.textContent="guardando…";
+  try{
+    const r = await fetch("/credenciales",{method:"POST",headers:{"Content-Type":"application/json","X-Alquimia":"1"},body:JSON.stringify({client_id:cid,client_secret:sec})});
+    est.textContent = r.ok ? "Guardado. Conectando…" : "No se pudo guardar. Revisa los datos.";
+  }catch(e){ est.textContent="No hay conexión con el puente."; }
 }
 
 function ponerModo(m){

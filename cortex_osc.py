@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Alquimia EEG OSC v0.2 — vía A (Cortex)
+Alquimia EEG OSC v0.3 — vía A (Cortex)
 Puente entre los cascos Emotiv (Insight, EPOC+) y OSC para escena.
 
 Lee los flujos de Cortex (bandas, expresiones, métricas, movimiento, contacto),
@@ -51,6 +51,57 @@ METRICS = {"eng": "engagement", "exc": "excitement", "str": "stress", "rel": "re
 
 def log(*a):
     print(time.strftime("%H:%M:%S"), *a, flush=True)
+
+
+CONGELADO = getattr(sys, "frozen", False)  # True dentro del .exe (PyInstaller)
+
+
+def carpeta_programa() -> Path:
+    """Carpeta del .exe o del script (para .env y grabaciones)."""
+    return Path(sys.executable).parent if CONGELADO else Path(__file__).parent
+
+
+def carpeta_recursos() -> Path:
+    """Carpeta con monitor.html (dentro del .exe, PyInstaller la extrae a _MEIPASS)."""
+    return Path(getattr(sys, "_MEIPASS", Path(__file__).parent))
+
+
+def archivo_config() -> Path:
+    if sys.platform == "win32":
+        base = Path(os.environ.get("APPDATA", Path.home()))
+    elif sys.platform == "darwin":
+        base = Path.home() / "Library" / "Application Support"
+    else:
+        base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+    return base / "AlquimiaEEGOSC" / "config.json"
+
+
+def leer_credenciales():
+    """Primero el .env o las variables de entorno; si no, la configuración guardada desde el monitor."""
+    cid = os.environ.get("EMOTIV_CLIENT_ID")
+    sec = os.environ.get("EMOTIV_CLIENT_SECRET")
+    if cid and sec:
+        return cid.strip(), sec.strip()
+    try:
+        d = json.loads(archivo_config().read_text(encoding="utf-8"))
+        if d.get("client_id") and d.get("client_secret"):
+            return d["client_id"].strip(), d["client_secret"].strip()
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def guardar_credenciales(cid, sec):
+    f = archivo_config()
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps({"client_id": cid.strip(), "client_secret": sec.strip()}), encoding="utf-8")
+    try:
+        os.chmod(f, 0o600)
+    except OSError:
+        pass
+    # lo nuevo manda sobre un .env viejo durante esta sesión
+    os.environ["EMOTIV_CLIENT_ID"] = cid.strip()
+    os.environ["EMOTIV_CLIENT_SECRET"] = sec.strip()
 
 
 def casco_numero(headset_id: str) -> int:
@@ -380,15 +431,29 @@ class Cortex:
         log("Cortex cerró la conexión.")
 
 
-async def modo_cortex(args, out, cascos, estado):
-    client_id = os.environ.get("EMOTIV_CLIENT_ID")
-    secret = os.environ.get("EMOTIV_CLIENT_SECRET")
+async def esperar_credenciales(args, estado, rechazadas=None):
     pasos = estado["pasos"]
-    if not client_id or not secret:
-        estado["mensaje"] = "Faltan EMOTIV_CLIENT_ID y EMOTIV_CLIENT_SECRET en el archivo .env"
-        log(estado["mensaje"])
-        await asyncio.sleep(2)
-        sys.exit(1)
+    avisado = False
+    while True:
+        c = leer_credenciales()
+        if c and c != rechazadas:
+            pasos["credenciales"] = True
+            return c
+        pasos["credenciales"] = False
+        if not args.monitor:
+            sys.exit("Faltan los datos de tu app de Cortex. Ponlos en el archivo .env "
+                     "o abre el puente con --monitor para escribirlos ahí.")
+        if not avisado:
+            if not rechazadas:
+                estado["mensaje"] = "Escribe en el monitor el Client ID y el Client Secret de tu app de Cortex."
+            log(estado["mensaje"])
+            avisado = True
+        await asyncio.sleep(1)
+
+
+async def modo_cortex(args, out, cascos, estado):
+    pasos = estado["pasos"]
+    client_id, secret = await esperar_credenciales(args, estado)
 
     por_sesion = {}  # sid -> Casco
 
@@ -418,25 +483,28 @@ async def modo_cortex(args, out, cascos, estado):
     pasos["cortex"] = True
     log("Conectado con Cortex.")
 
-    # Paso 2: aprobación de la app
-    r = await cx.llamar("requestAccess", clientId=client_id, clientSecret=secret)
-    avisado = False
-    while not r.get("accessGranted"):
-        pasos["esperando_aprobacion"] = True
-        if not avisado:
-            estado["mensaje"] = "Aprueba la app «Alquimia EEG OSC» en el EMOTIV Launcher."
-            log(estado["mensaje"])
-            avisado = True
-        await asyncio.sleep(3)
-        r = await cx.llamar("requestAccess", clientId=client_id, clientSecret=secret)
-    pasos["esperando_aprobacion"] = False
-    try:
-        token = (await cx.llamar("authorize", clientId=client_id, clientSecret=secret))["cortexToken"]
-    except CortexError as e:
-        estado["mensaje"] = f"No se pudo autorizar: {e}. Revisa el Client ID y el Secret, y que el Launcher tenga tu sesión iniciada."
-        log(estado["mensaje"])
-        await asyncio.sleep(2)
-        sys.exit(1)
+    # Paso 2: aprobación de la app (si Cortex rechaza los datos, se piden de nuevo)
+    while True:
+        try:
+            r = await cx.llamar("requestAccess", clientId=client_id, clientSecret=secret)
+            avisado = False
+            while not r.get("accessGranted"):
+                pasos["esperando_aprobacion"] = True
+                if not avisado:
+                    estado["mensaje"] = "Aprueba la app «Alquimia EEG OSC» en el EMOTIV Launcher."
+                    log(estado["mensaje"])
+                    avisado = True
+                await asyncio.sleep(3)
+                r = await cx.llamar("requestAccess", clientId=client_id, clientSecret=secret)
+            pasos["esperando_aprobacion"] = False
+            token = (await cx.llamar("authorize", clientId=client_id, clientSecret=secret))["cortexToken"]
+            break
+        except CortexError as e:
+            pasos["esperando_aprobacion"] = False
+            estado["mensaje"] = (f"Cortex no aceptó los datos de la app ({e}). Revisa el Client ID y el Secret, "
+                                 f"y que el Launcher tenga tu sesión iniciada.")
+            client_id, secret = await esperar_credenciales(args, estado, rechazadas=(client_id, secret))
+    estado["mensaje"] = ""
     pasos["autorizado"] = True
     log("Autorizado.")
 
@@ -519,7 +587,7 @@ class Monitor:
         import threading
         import webbrowser
         import websockets
-        html = Path(__file__).with_name("monitor.html")
+        html = carpeta_recursos() / "monitor.html"
         puerto_ws = self.puerto + 1
 
         class Pagina(http.server.BaseHTTPRequestHandler):
@@ -530,6 +598,28 @@ class Monitor:
                 cuerpo = html.read_bytes().replace(b"__WS_PORT__", str(puerto_ws).encode())
                 self_.send_response(200)
                 self_.send_header("Content-Type", "text/html; charset=utf-8")
+                self_.send_header("Content-Length", str(len(cuerpo)))
+                self_.end_headers()
+                self_.wfile.write(cuerpo)
+
+            def do_POST(self_):
+                # El encabezado propio obliga al navegador a pedir permiso (CORS) a otras páginas,
+                # así que solo el monitor puede escribir aquí.
+                if self_.path != "/credenciales" or self_.headers.get("X-Alquimia") != "1":
+                    self_.send_error(403)
+                    return
+                try:
+                    n = int(self_.headers.get("Content-Length", "0"))
+                    d = json.loads(self_.rfile.read(min(n, 4096)) or b"{}")
+                    cid, sec = str(d.get("client_id", "")).strip(), str(d.get("client_secret", "")).strip()
+                    if len(cid) < 8 or len(sec) < 8:
+                        raise ValueError
+                    guardar_credenciales(cid, sec)
+                    ok, cuerpo = 200, b'{"ok":true}'
+                except (ValueError, OSError):
+                    ok, cuerpo = 400, b'{"ok":false}'
+                self_.send_response(ok)
+                self_.send_header("Content-Type", "application/json")
                 self_.send_header("Content-Length", str(len(cuerpo)))
                 self_.end_headers()
                 self_.wfile.write(cuerpo)
@@ -593,7 +683,7 @@ async def modo_simular(args, out, cascos, estado):
         "mot": ["Q0", "Q1", "Q2", "Q3"],
     }
     pasos = estado["pasos"]
-    pasos.update(cortex=True, autorizado=True, casco=c.id, casco_estado="conectado",
+    pasos.update(credenciales=True, cortex=True, autorizado=True, casco=c.id, casco_estado="conectado",
                  flujos=list(c.cols))
     cascos[n] = c
     estado["status"] = 2
@@ -655,7 +745,7 @@ async def principal(args):
             return
         cascos = {}
         estado = {"status": 0, "mensaje": "",
-                  "pasos": {"cortex": False, "esperando_aprobacion": False, "autorizado": False,
+                  "pasos": {"credenciales": False, "cortex": False, "esperando_aprobacion": False, "autorizado": False,
                             "casco": "", "casco_estado": "", "flujos": []}}
         if args.monitor:
             mon = Monitor(cascos, estado, args.monitor_puerto, "simulacion" if args.simular else "cortex")
@@ -674,7 +764,7 @@ async def principal(args):
 
 def main():
     if load_dotenv:
-        load_dotenv(Path(__file__).with_name(".env"))
+        load_dotenv(carpeta_programa() / ".env")
     ap = argparse.ArgumentParser(description="Puente EEG (Emotiv Cortex) → OSC")
     ap.add_argument("--destino", action="append",
                     help="host:puerto de destino OSC (se puede repetir). Por defecto 127.0.0.1:9200")
@@ -693,10 +783,22 @@ def main():
     ap.add_argument("--url", default=CORTEX_URL, help=argparse.SUPPRESS)
     args = ap.parse_args()
     args.destino = args.destino or ["127.0.0.1:9200"]
+    if CONGELADO and len(sys.argv) == 1:
+        args.monitor = True  # doble clic en el .exe: abre el monitor
+    if CONGELADO:
+        os.chdir(carpeta_programa())  # las grabaciones quedan junto al .exe
+    if not args.reproducir:
+        log("Alquimia EEG OSC v0.3 · Ctrl+C o cerrar esta ventana para salir.")
     try:
         asyncio.run(principal(args))
     except KeyboardInterrupt:
         log("Detenido.")
+    except SystemExit as e:
+        if e.code not in (None, 0):
+            log(e.code if isinstance(e.code, str) else "Error.")
+            if CONGELADO:
+                input("Pulsa Enter para cerrar…")
+        raise SystemExit(1 if e.code else 0)
 
 
 if __name__ == "__main__":

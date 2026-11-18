@@ -1,0 +1,67 @@
+name: Compilar ejecutables
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  compilar:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            archivo: AlquimiaEEGOSC-windows.exe
+            sep: ";"
+          - os: macos-latest
+            archivo: AlquimiaEEGOSC-mac.zip
+            sep: ":"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Dependencias
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: Compilar
+        run: pyinstaller --onefile --name AlquimiaEEGOSC --add-data "monitor.html${{ matrix.sep }}." --collect-submodules websockets --noconfirm cortex_osc.py
+
+      - name: Prueba rápida (simulación)
+        shell: bash
+        run: |
+          if [ -f dist/AlquimiaEEGOSC.exe ]; then EXE=dist/AlquimiaEEGOSC.exe; else EXE=dist/AlquimiaEEGOSC; fi
+          "$EXE" --simular --no-abrir --monitor > prueba.log 2>&1 &
+          sleep 8
+          curl -sf http://127.0.0.1:9201 | grep -q "monitor de contacto"
+          cat prueba.log
+
+      - name: Empaquetar
+        shell: bash
+        run: |
+          if [ -f dist/AlquimiaEEGOSC.exe ]; then
+            mv dist/AlquimiaEEGOSC.exe "dist/${{ matrix.archivo }}"
+          else
+            cd dist && zip -9 "${{ matrix.archivo }}" AlquimiaEEGOSC
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.archivo }}
+          path: dist/${{ matrix.archivo }}
+
+      - name: Adjuntar a la versión publicada
+        if: github.event_name == 'release'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" "dist/${{ matrix.archivo }}" --clobber

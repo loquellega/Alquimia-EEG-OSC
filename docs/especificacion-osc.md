@@ -1,4 +1,4 @@
-# Especificación OSC · Alquimia EEG OSC v0.2
+# Especificación OSC · Alquimia EEG OSC v0.3
 
 Salida común para todas las vías de lectura (Cortex hoy, lector propio después). La pieza escénica no tiene que saber qué vía está activa.
 
