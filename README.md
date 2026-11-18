@@ -1,6 +1,6 @@
 # Alquimia EEG OSC
 
-**v0.3** · Puente entre cascos EEG Emotiv (Insight, EPOC+) y OSC para teatro, danza y música, con monitor de contacto.
+**v0.3.1** · Puente entre cascos EEG Emotiv (Insight, EPOC+) y OSC para teatro, danza y música, con monitor de contacto.
 
 ![Monitor de contacto, asistente](docs/capturas/03-asistente-electrodos.png)
 
@@ -90,6 +90,7 @@ El monitor se abre en `http://localhost:9201` y usa también el puerto 9202. Con
 | `--crudo` | EEG crudo en `/eeg/{casco}/raw` (cascos de consumo como el Insight) |
 | `--casco INSIGHT` | usa solo el casco cuyo id contenga ese texto |
 | `--hz 30` · `--suavizado 0.3` | tasa de salida · suavizado (más bajo = más suave) |
+| `--debito 10` | sesiones que se piden a Cortex al autorizar (evita el error -32019) |
 
 Ejemplo, en función: `python cortex_osc.py --monitor --grabar --destino 127.0.0.1:9200 --destino 192.168.1.20:9200`
 
@@ -108,6 +109,7 @@ Ejemplo, en función: `python cortex_osc.py --monitor --grabar --destino 127.0.0
 | «Buscando el casco…» | enciéndelo, revisa la batería y el Bluetooth |
 | «Cortex no aceptó los datos de la app» | revisa el Client ID y el Secret; el monitor te los vuelve a pedir |
 | «Los puertos 9201 y 9202 están ocupados» | ya hay otro puente abierto: ciérralo |
+| «Session limit on this device has been reached» (-32019) | resuelto desde v0.3.1: el puente pide más sesiones solo |
 | todos los electrodos en gris o rojo | revisa los sensores de referencia detrás de la oreja |
 
 ## Capturas / Screenshots

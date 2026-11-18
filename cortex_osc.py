@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Alquimia EEG OSC v0.3 — vía A (Cortex)
+Alquimia EEG OSC v0.3.1 — vía A (Cortex)
 Puente entre los cascos Emotiv (Insight, EPOC+) y OSC para escena.
 
 Lee los flujos de Cortex (bandas, expresiones, métricas, movimiento, contacto),
@@ -451,6 +451,28 @@ async def esperar_credenciales(args, estado, rechazadas=None):
         await asyncio.sleep(1)
 
 
+async def autorizar(cx, client_id, secret, debito):
+    """authorize con debit: suma sesiones a la cuota local de esta computadora (error -32019 si se agota)."""
+    try:
+        return (await cx.llamar("authorize", clientId=client_id, clientSecret=secret, debit=debito))["cortexToken"]
+    except CortexError as e:
+        log("authorize con debit no funcionó, pruebo sin él:", e)
+        return (await cx.llamar("authorize", clientId=client_id, clientSecret=secret))["cortexToken"]
+
+
+async def abrir_sesion(cx, token, hid, client_id, secret, debito):
+    """createSession; si la cuota local se agotó (-32019), vuelve a autorizar con debit y reintenta."""
+    try:
+        return await cx.llamar("createSession", cortexToken=token, headset=hid, status="active"), token
+    except CortexError as e:
+        if "-32019" not in str(e):
+            raise
+        log("Cuota de sesiones agotada; pidiendo más (debit)…")
+        token = (await cx.llamar("authorize", clientId=client_id, clientSecret=secret,
+                                 debit=max(debito, 10)))["cortexToken"]
+        return await cx.llamar("createSession", cortexToken=token, headset=hid, status="active"), token
+
+
 async def modo_cortex(args, out, cascos, estado):
     pasos = estado["pasos"]
     client_id, secret = await esperar_credenciales(args, estado)
@@ -497,7 +519,7 @@ async def modo_cortex(args, out, cascos, estado):
                 await asyncio.sleep(3)
                 r = await cx.llamar("requestAccess", clientId=client_id, clientSecret=secret)
             pasos["esperando_aprobacion"] = False
-            token = (await cx.llamar("authorize", clientId=client_id, clientSecret=secret))["cortexToken"]
+            token = await autorizar(cx, client_id, secret, args.debito)
             break
         except CortexError as e:
             pasos["esperando_aprobacion"] = False
@@ -541,9 +563,10 @@ async def modo_cortex(args, out, cascos, estado):
     for h in lista:
         hid = h["id"]
         try:
-            ses = await cx.llamar("createSession", cortexToken=token, headset=hid, status="active")
+            ses, token = await abrir_sesion(cx, token, hid, client_id, secret, args.debito)
         except CortexError as e:
-            log("No pude abrir sesión con", hid, "→", e)
+            estado["mensaje"] = f"No pude abrir sesión con {hid}: {e}"
+            log(estado["mensaje"])
             continue
         n = casco_numero(hid)
         casco = Casco(n, hid, fuente=1, suavizado=args.suavizado)
@@ -556,7 +579,7 @@ async def modo_cortex(args, out, cascos, estado):
             casco.canales = [c for c in casco.cols["eeg"]
                              if c not in ("COUNTER", "INTERPOLATED", "RAW_CQ", "MARKER_HARDWARE", "MARKERS")]
         pasos["flujos"] = list(casco.cols)
-        log(f"Casco {n} ({hid}) → flujos: {', '.join(casco.cols)}")
+        log(f"Casco {n} ({hid}), flujos: {', '.join(casco.cols)}")
         for fail in res.get("failure", []):
             log(f"  sin flujo {fail.get('streamName')}: {fail.get('message')}")
 
@@ -780,6 +803,8 @@ def main():
     ap.add_argument("--simular", action="store_true", help="datos sintéticos, sin casco")
     ap.add_argument("--reproducir", metavar="ARCHIVO", help="reproducir una grabación .jsonl")
     ap.add_argument("--bucle", action="store_true", help="con --reproducir: repetir sin fin")
+    ap.add_argument("--debito", type=int, default=10,
+                    help="sesiones que se piden a Cortex al autorizar (debit). 10 por defecto")
     ap.add_argument("--url", default=CORTEX_URL, help=argparse.SUPPRESS)
     args = ap.parse_args()
     args.destino = args.destino or ["127.0.0.1:9200"]
@@ -788,7 +813,7 @@ def main():
     if CONGELADO:
         os.chdir(carpeta_programa())  # las grabaciones quedan junto al .exe
     if not args.reproducir:
-        log("Alquimia EEG OSC v0.3 · Ctrl+C o cerrar esta ventana para salir.")
+        log("Alquimia EEG OSC v0.3.1 · Ctrl+C o cerrar esta ventana para salir.")
     try:
         asyncio.run(principal(args))
     except KeyboardInterrupt:
