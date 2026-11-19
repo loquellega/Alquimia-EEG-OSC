@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Alquimia EEG OSC v0.7 — vía A (Cortex)
+Alquimia EEG OSC v0.8 — vía A (Cortex)
 Puente entre los cascos Emotiv (Insight, EPOC+) y OSC para escena.
 
 Lee los flujos de Cortex (bandas, expresiones, métricas, movimiento, contacto),
@@ -12,6 +12,9 @@ Modos:
   python cortex_osc.py --simular       datos sintéticos, sin casco (para probar TD/Isadora)
   python cortex_osc.py --reproducir X  reproduce una grabación .jsonl
   python cortex_osc.py --monitor       además abre el monitor de contacto (asistente y avanzado)
+
+Relevo escénico (v0.8): cada cuadro sale también por WebSocket (puerto 9203) para artefactos
+web como Endeles Escena, y lo que llegue por OSC al 9210 con /endeles/… se reenvía ahí.
 
 Diseño, investigación y desarrollo: Héctor Cruz Juárez — https://hectorcruz.com.mx
 Colección Alchemy of Meaning. · GPL-3.0-or-later
@@ -422,18 +425,108 @@ class Casco:
 # ---------------------------------------------------------------------------
 # Salida OSC y grabación
 # ---------------------------------------------------------------------------
+VERSION = "0.8"
+FORMATO_SESION = "alquimia-eeg-sesion"
+
+
+def es_evento(addr):
+    """Mensajes sueltos (no estados): van en «ev» del relevo y no se quedan como último valor."""
+    return addr.endswith(("/blink", "/wink")) or addr == "/eeg/marca" or addr.startswith("/endeles/")
+
+
+class Relevo:
+    """Salida WebSocket para artefactos web (el navegador no puede recibir UDP).
+
+    Un mensaje JSON por cuadro: {"seq", "t", "d": {dirección: valor}, "ev": [[dirección, args], …]}.
+    Al conectarse, cada página recibe la cabecera de la sesión (si hay) y el último estado completo.
+    Solo envía: la página no puede mandar nada al puente por aquí.
+    """
+
+    def __init__(self, puerto, host="0.0.0.0"):
+        self.puerto = puerto
+        self.host = host
+        self.clientes = set()
+        self.estado = {}          # último valor de cada dirección continua
+        self.eventos = []         # eventos que llegaron fuera de un cuadro (cues /endeles/…)
+        self.cabecera = None
+        self.seq = 0
+        self.t = 0.0
+
+    async def iniciar(self):
+        import websockets
+        try:
+            await websockets.serve(self._cliente, self.host, self.puerto)
+            log(f"Relevo WebSocket en ws://{self.host}:{self.puerto} (Endeles Escena y otros artefactos web)")
+        except OSError as e:
+            log(f"No pude abrir el relevo WebSocket en el puerto {self.puerto}: {e}")
+
+    async def _cliente(self, ws):
+        self.clientes.add(ws)
+        try:
+            if self.cabecera:
+                await ws.send(json.dumps({"cabecera": self.cabecera}, ensure_ascii=False))
+            await ws.send(json.dumps({"seq": self.seq, "t": round(self.t, 4), "d": self.estado, "ev": [],
+                                      "completo": True}, ensure_ascii=False))
+            await ws.wait_closed()
+        finally:
+            self.clientes.discard(ws)
+
+    @staticmethod
+    def _valor(args):
+        return args[0] if len(args) == 1 else list(args)
+
+    def cuadro(self, mensajes, t):
+        d, ev = {}, self.eventos
+        self.eventos = []
+        for addr, args in mensajes:
+            if addr == "/eeg/frame" and args:
+                self.seq = int(args[0])
+            if addr.endswith("/raw"):
+                continue      # demasiado pesado para el navegador
+            if es_evento(addr):
+                ev.append([addr, list(args)])
+            else:
+                d[addr] = self._valor(args)
+        self.t = t
+        self.estado.update(d)
+        self._enviar({"seq": self.seq, "t": round(t, 4), "d": d, "ev": ev})
+
+    def evento(self, addr, args):
+        """Cue que llega por OSC (/endeles/…): sale en el siguiente cuadro, o de inmediato si no hay cuadros."""
+        self.eventos.append([addr, list(args)])
+        self._enviar({"seq": self.seq, "t": round(self.t, 4), "d": {}, "ev": self.eventos})
+        self.eventos = []
+
+    def publicar_cabecera(self, cab):
+        self.cabecera = cab
+        self._enviar({"cabecera": cab})
+
+    def _enviar(self, msg):
+        if not self.clientes:
+            return
+        import websockets
+        websockets.broadcast(self.clientes, json.dumps(msg, ensure_ascii=False))
+
+
 class Salida:
-    def __init__(self, destinos, grabar=None):
+    def __init__(self, destinos, grabar=None, relevo=None, cabecera=None):
         self.destinos = []
         self.clientes = []
         self.configurar(destinos)
         self.enviados = 0
         self.cuadro = []
         self.archivo = None
+        self.relevo = relevo
+        self.t_ultimo = 0.0
+        self.marcas = []
         if grabar:
             Path(grabar).parent.mkdir(parents=True, exist_ok=True)
             self.archivo = open(grabar, "a", encoding="utf-8")
+            if cabecera:
+                self.archivo.write(json.dumps(cabecera, ensure_ascii=False) + "\n")
             log("Grabando en", grabar)
+        if relevo is not None and cabecera:
+            relevo.cabecera = cabecera
 
     def configurar(self, destinos):
         nuevos, clientes = [], []
@@ -456,13 +549,43 @@ class Salida:
         self.cuadro.append([addr, args])
 
     def cerrar_cuadro(self, t):
-        if self.archivo and self.cuadro:
-            self.archivo.write(json.dumps({"t": round(t, 4), "m": self.cuadro}) + "\n")
+        if self.cuadro:
+            for addr, args in self.cuadro:
+                if addr == "/eeg/marca":
+                    self.marcas.append({"t": round(t, 3), "txt": " ".join(str(a) for a in args)})
+            if self.archivo:
+                self.archivo.write(json.dumps({"t": round(t, 4), "m": self.cuadro}, ensure_ascii=False) + "\n")
+            if self.relevo is not None:
+                self.relevo.cuadro(self.cuadro, t)
+        self.t_ultimo = t
         self.cuadro = []
 
     def cerrar(self):
         if self.archivo:
+            # línea de cierre: duración y marcas, para que los lectores no tengan que recorrer todo
+            self.archivo.write(json.dumps({"tipo": "cierre", "duracion": round(self.t_ultimo, 3),
+                                           "fin": datetime.now().astimezone().isoformat(timespec="seconds"),
+                                           "marcas": self.marcas}, ensure_ascii=False) + "\n")
             self.archivo.close()
+            self.archivo = None
+
+
+def hacer_cabecera(args, ident):
+    """Primera línea de la grabación (formato alquimia-eeg-sesion v1, ver docs/especificacion-osc.md)."""
+    usos = [u.strip() for u in (args.usos or "").split(",") if u.strip()]
+    consentimiento = None
+    if usos or args.caduca:
+        consentimiento = {"version": args.consentimiento or "", "usos": usos, "caduca": args.caduca or "",
+                          "anonimo": True}
+    return {
+        "tipo": "cabecera", "formato": FORMATO_SESION, "version": 1, "id": ident,
+        "persona": args.persona or "", "filtro_casco": args.casco or "",
+        "inicio": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "tasa": args.hz, "via": "simulacion" if args.simular else "cortex", "spec_osc": "0.2",
+        "programa": f"Alquimia EEG OSC {VERSION}",
+        "consentimiento": consentimiento,
+        "obra": {"titulo": args.obra or "", "escena": "", "funcion": ""},
+    }
 
 
 def interprete_de(estado, n):
@@ -1015,10 +1138,18 @@ async def entrada_osc(estado, puerto):
         disp.map(f"/eeg/sesion/{accion}", orden(accion))
     disp.map("/eeg/sesion/iniciar", orden("iniciar", True))
     disp.map("/eeg/frases/recargar", orden("recargar_frases"))
+
+    def otros(addr, *x):
+        # /endeles/go, /endeles/cue 3… → a los artefactos web conectados al relevo
+        rel = estado.get("relevo")
+        if rel is not None and addr.startswith("/endeles/"):
+            rel.evento(addr, x)
+
+    disp.set_default_handler(otros)
     try:
         srv = AsyncIOOSCUDPServer(("0.0.0.0", puerto), disp, asyncio.get_running_loop())
         await srv.create_serve_endpoint()
-        log(f"Escuchando marcas OSC en el puerto {puerto} (/eeg/marca, /eeg/sesion/terminar…)")
+        log(f"Escuchando OSC en el puerto {puerto} (/eeg/marca, /eeg/sesion/terminar…, /endeles/… al relevo)")
     except OSError as e:
         log(f"No pude abrir el puerto de entrada OSC {puerto}: {e}")
 
@@ -1073,10 +1204,15 @@ async def modo_simular(args, out, cascos, estado):
 
 async def modo_reproducir(args, out):
     lineas = Path(args.reproducir).read_text(encoding="utf-8").splitlines()
-    cuadros = [json.loads(l) for l in lineas if l.strip()]
+    todo = [json.loads(l) for l in lineas if l.strip()]
+    cuadros = [c for c in todo if "m" in c]
+    cab = next((c for c in todo if c.get("tipo") == "cabecera"), None)
     if not cuadros:
         sys.exit("La grabación está vacía.")
-    log(f"Reproduciendo {len(cuadros)} cuadros de {args.reproducir}")
+    if cab and out.relevo is not None:
+        out.relevo.publicar_cabecera(cab)   # misma persona → mismo bosque
+    log(f"Reproduciendo {len(cuadros)} cuadros de {args.reproducir}"
+        + (f" (persona {cab.get('persona')})" if cab and cab.get("persona") else ""))
     while True:
         t_ini = time.monotonic()
         t_base = cuadros[0]["t"]
@@ -1086,7 +1222,7 @@ async def modo_reproducir(args, out):
                 await asyncio.sleep(espera)
             for addr, a in c["m"]:
                 out.send(addr, a)
-            out.cuadro = []
+            out.cerrar_cuadro(c["t"])
         if not args.bucle:
             break
         log("Repitiendo…")
@@ -1094,24 +1230,32 @@ async def modo_reproducir(args, out):
 
 # ---------------------------------------------------------------------------
 async def principal(args):
-    grabar = None
-    if args.grabar and not args.reproducir:
-        grabar = str(Path("grabaciones") / f"eeg_{datetime.now():%Y%m%d_%H%M%S}.jsonl")
+    grabar = cabecera = None
     cfg_osc = leer_config().get("osc") or {}
     if not args.destino_cli and cfg_osc.get("destinos"):
         args.destino = cfg_osc["destinos"]
     if not args.hz_cli and cfg_osc.get("hz"):
         args.hz = int(cfg_osc["hz"])
-    out = Salida(args.destino, grabar)
+    if args.grabar and not args.reproducir:
+        ident = f"eeg_{datetime.now():%Y%m%d_%H%M%S}"
+        grabar = str(Path("grabaciones") / f"{ident}.jsonl")
+        cabecera = hacer_cabecera(args, ident)
+    relevo = None
+    if args.ws:
+        relevo = Relevo(args.ws, "127.0.0.1" if args.ws_local else "0.0.0.0")
+        await relevo.iniciar()
+    out = Salida(args.destino, grabar, relevo, cabecera)
     args.destino = out.destinos
+    cascos = {}
+    estado = {"status": 0, "mensaje": "", "args": args, "out": out, "relevo": relevo,
+              "pasos": {"credenciales": False, "cortex": False, "esperando_aprobacion": False, "autorizado": False,
+                        "casco": "", "casco_estado": "", "flujos": []}}
     try:
         if args.reproducir:
+            if args.osc_entrada:
+                await entrada_osc(estado, args.osc_entrada)   # los cues siguen pasando al relevo
             await modo_reproducir(args, out)
             return
-        cascos = {}
-        estado = {"status": 0, "mensaje": "", "args": args, "out": out,
-                  "pasos": {"credenciales": False, "cortex": False, "esperando_aprobacion": False, "autorizado": False,
-                            "casco": "", "casco_estado": "", "flujos": []}}
         if args.monitor:
             estado["hz"] = args.hz
             mon = Monitor(cascos, estado, args.monitor_puerto, "simulacion" if args.simular else "cortex", out)
@@ -1153,6 +1297,15 @@ def main():
     ap.add_argument("--contraste", type=float, default=1.0, help="exagera (>1) o suaviza (<1) los índices")
     ap.add_argument("--permanencia", type=float, default=8, help="segundos que un estado debe sostenerse para cambiar (8)")
     ap.add_argument("--osc-entrada", type=int, default=9210, help="puerto para recibir marcas de escena (9210; 0 = no)")
+    ap.add_argument("--ws", type=int, default=9203,
+                    help="puerto del relevo WebSocket para artefactos web como Endeles Escena (9203; 0 = no)")
+    ap.add_argument("--ws-local", action="store_true",
+                    help="el relevo solo acepta páginas de esta computadora (por defecto, toda la red local)")
+    ap.add_argument("--persona", help="código anónimo de quien lleva el casco (va en la cabecera de la grabación)")
+    ap.add_argument("--usos", help="usos autorizados, separados por comas (p. ej. en_vivo,grabacion,reuso_artefactos)")
+    ap.add_argument("--caduca", help="fecha en que caduca el permiso de uso de la grabación (AAAA-MM-DD)")
+    ap.add_argument("--consentimiento", help="versión del formato de consentimiento firmado (p. ej. c1)")
+    ap.add_argument("--obra", help="título de la obra (va en la cabecera de la grabación)")
     ap.add_argument("--sin-interpretacion", action="store_true", help="no calcular índices, estados ni frases")
     ap.add_argument("--debito", type=int, default=10,
                     help="sesiones que se piden a Cortex al autorizar (debit). 10 por defecto")
@@ -1169,7 +1322,7 @@ def main():
     if CONGELADO:
         os.chdir(carpeta_programa())  # las grabaciones quedan junto al .exe
     if not args.reproducir:
-        log("Alquimia EEG OSC v0.7 · Ctrl+C o cerrar esta ventana para salir.")
+        log(f"Alquimia EEG OSC v{VERSION} · Ctrl+C o cerrar esta ventana para salir.")
     try:
         asyncio.run(principal(args))
     except KeyboardInterrupt:

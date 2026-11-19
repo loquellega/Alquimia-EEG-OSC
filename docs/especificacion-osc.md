@@ -1,4 +1,4 @@
-# Especificación OSC · Alquimia EEG OSC v0.5
+# Especificación OSC · Alquimia EEG OSC v0.8
 
 Salida común para todas las vías de lectura (Cortex hoy, lector propio después). La pieza escénica no tiene que saber qué vía está activa.
 
@@ -64,6 +64,7 @@ Salida común para todas las vías de lectura (Cortex hoy, lector propio despué
 | `/eeg/sesion/reiniciar` | — | empieza otra sin guardar |
 | `/eeg/sesion/recalibrar` | — | repite la línea base |
 | `/eeg/frases/recargar` | — | vuelve a leer `frases.json` |
+| `/endeles/…` | lo que sea | no lo usa el puente: lo reenvía tal cual al relevo WebSocket (cues de Endeles Escena: `/endeles/go`, `/endeles/cue i`, `/endeles/cam i`…) |
 
 ## Del sistema
 
@@ -76,4 +77,36 @@ Salida común para todas las vías de lectura (Cortex hoy, lector propio despué
 
 - Tasa fija (30 Hz por defecto). Los datos lentos repiten su último valor. `/raw` sale a la tasa del casco.
 - Solo enteros y decimales en los argumentos, para Isadora (OSC Listener) y TouchDesigner (OSC In CHOP).
-- Las grabaciones (`--grabar`) son JSON por líneas: `{"t": segundos, "m": [[dirección, [args]], …]}`. `--reproducir` las vuelve a enviar con el mismo ritmo.
+- Las grabaciones (`--grabar`) son JSON por líneas (ver abajo). `--reproducir` las vuelve a enviar con el mismo ritmo, por OSC y por el relevo.
+
+## Relevo WebSocket (puerto 9203)
+
+El navegador no puede recibir UDP, así que el puente repite cada cuadro por WebSocket para artefactos web (Endeles Escena, aurigaQ…). Escucha en toda la red local (`--ws-local` para solo esta computadora; `--ws 0` lo apaga). Es de solo salida.
+
+```json
+{"seq": 1842, "t": 61.40,
+ "d":  {"/eeg/2/band/alpha/norm": 0.41, "/eeg/2/quality": 0.88, "/eeg/2/valid": 1},
+ "ev": [["/eeg/2/blink", [1]], ["/endeles/go", []]]}
+```
+
+- `d`: valores continuos del cuadro, con la dirección OSC como llave. Un argumento → número; varios → lista. `/raw` no se repite aquí.
+- `ev`: eventos en orden: parpadeo, guiño, `/eeg/marca` y todo lo que llegó por `/endeles/…` al 9210.
+- Al conectarse, la página recibe `{"cabecera": …}` (si se está grabando o reproduciendo) y un mensaje con `"completo": true` con el último valor de todo.
+
+## Grabación de sesión (`.jsonl`, formato `alquimia-eeg-sesion` v1)
+
+Una línea por objeto JSON:
+
+1. **Cabecera** (primera línea):
+   ```json
+   {"tipo":"cabecera","formato":"alquimia-eeg-sesion","version":1,"id":"eeg_20261119_201405",
+    "persona":"P-7F3A","filtro_casco":"","inicio":"2026-11-19T20:14:05-06:00","tasa":30,
+    "via":"cortex","spec_osc":"0.2","programa":"Alquimia EEG OSC 0.8",
+    "consentimiento":{"version":"c1","usos":["en_vivo","grabacion","reuso_artefactos"],"caduca":"2027-11-19","anonimo":true},
+    "obra":{"titulo":"","escena":"","funcion":""}}
+   ```
+   Se llena con `--persona`, `--usos`, `--caduca`, `--consentimiento` y `--obra`. `persona` es un código anónimo: el nombre y el consentimiento firmado se guardan **fuera** del archivo.
+2. **Cuadros:** `{"t": segundos, "m": [[dirección, [args]], …]}`, igual que antes.
+3. **Cierre** (última línea, al salir con Ctrl+C o al terminar): `{"tipo":"cierre","duracion":…,"fin":…,"marcas":[{"t":…,"txt":…}]}`. Si el programa se cerró de golpe, falta; los lectores deben tolerarlo.
+
+Las grabaciones viejas (sin cabecera) se siguen reproduciendo igual. Un artefacto que lea sesiones debe revisar `consentimiento.usos` antes de usar el archivo.

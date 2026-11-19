@@ -1,6 +1,6 @@
 # Alquimia EEG OSC
 
-**v0.7** · Puente entre cascos EEG Emotiv (Insight, EPOC+) y OSC para teatro, danza y música, con dashboard de sesiones.
+**v0.8** · Puente entre cascos EEG Emotiv (Insight, EPOC+) y OSC para teatro, danza y música, con dashboard de sesiones.
 
 ![Dashboard en vivo](docs/capturas/12-puntero.png)
 
@@ -124,12 +124,17 @@ Todo se guarda en la configuración y se conserva al volver a abrir.
 | `--casco INSIGHT` | usa solo el casco cuyo id contenga ese texto |
 | `--hz 30` · `--suavizado 0.3` | tasa de salida · suavizado (más bajo = más suave) |
 | `--debito 10` | sesiones que se piden a Cortex al autorizar (evita el error -32019) |
+| `--ws 9203` | relevo WebSocket para artefactos web (Endeles Escena); `0` lo apaga, `--ws-local` solo esta computadora |
+| `--persona P-7F3A` · `--obra "…"` | código anónimo de quien lleva el casco y obra; van en la cabecera de la grabación |
+| `--usos en_vivo,grabacion,reuso_artefactos` · `--caduca 2027-11-19` · `--consentimiento c1` | qué permite la persona, hasta cuándo y con qué formato firmado |
 
 Ejemplo, en función: `python cortex_osc.py --monitor --grabar --destino 127.0.0.1:9200 --destino 192.168.1.20:9200`
 
 **Recibir:** en TouchDesigner usa un OSC In CHOP en el puerto 9200. En Isadora, pon el puerto OSC en 9200 (Preferencias → Comunicaciones) y usa el actor OSC Listener.
 
 **Cascos:** `/eeg/1/…` = EPOC+, `/eeg/2/…` = Insight.
+
+**Artefactos web (Endeles Escena):** se conectan a `ws://IP-del-puente:9203` y reciben cada cuadro en JSON. Los cues (`/endeles/go`, `/endeles/cue 3`…) se mandan por OSC al puerto 9210 desde Pixera, Isadora o QLab, y el puente los reenvía a la página. Detalle en `docs/especificacion-osc.md`.
 
 **Nota:** con Cortex sin licencia de pago, los cascos de consumo (Insight) entregan todos los flujos, incluido el EEG crudo; los profesionales (EPOC) todo excepto el EEG crudo y las métricas de alta resolución. El EEG no lee emociones: da estimaciones de estado. Úsalas como textura escénica, no como verdad.
 
